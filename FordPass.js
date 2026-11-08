@@ -721,12 +721,23 @@ async function fetchVehicleImage(token, vin, regionCfg) {
   return null;
 }
 
+// ListWidget has a fixed pixel canvas per family and doesn't scroll — content past the
+// edge is silently clipped, not an error. A fixed image size was by far the biggest
+// contributor to that (90pt tall eats most of a small/medium widget's ~155pt height),
+// so it's sized down per family here. These are the standard iPhone widget point
+// sizes; real sizes vary slightly by device but this is close enough to budget by.
+const IMAGE_SIZE_BY_FAMILY = {
+  small: new Size(120, 40),
+  medium: new Size(260, 55),
+  large: new Size(290, 90),
+};
+
 async function renderVehicleImage(widget, vin, regionCfg) {
   const token = await getValidToken(regionCfg);
   const img = await fetchVehicleImage(token, vin, regionCfg);
   if (!img) return;
   const wi = widget.addImage(img);
-  wi.imageSize = new Size(300, 90);
+  wi.imageSize = IMAGE_SIZE_BY_FAMILY[config.widgetFamily] || IMAGE_SIZE_BY_FAMILY.medium;
   wi.applyFittingContentMode();
   wi.centerAlignImage();
   widget.addSpacer(6);
