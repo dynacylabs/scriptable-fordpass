@@ -591,9 +591,15 @@ async function runMenu() {
 
 // ===================== widget =====================
 
-function addTile(stack, label, value) {
+// detailKey, when set, makes the tile tap-through to a full-screen detail view of that
+// item (see runDetailView) — only on medium/large widgets, per the same WidgetStack.url
+// limitation as the location block (small widgets' only tap target is the whole widget).
+function addTile(stack, label, value, detailKey) {
   const col = stack.addStack();
   col.layoutVertically();
+  if (detailKey && config.widgetFamily !== "small") {
+    col.url = `scriptable:///run/${encodeURIComponent(Script.name())}?detail=${detailKey}`;
+  }
   const l = col.addText(label);
   l.font = Font.systemFont(10);
   l.textColor = Color.gray();
@@ -897,6 +903,32 @@ function renderHealthAlertsVerbose(widget, status) {
   }
 }
 
+// alarm (arm/disarm state) and panicAlarm (dedicated panic/triggered field) both land
+// here on tap, combined, since neither is rich enough alone to be its own detail view —
+// this is the one place that extra context (Ford's "UNDEFINED" shown as "—" the same
+// way the tile already does) is worth surfacing together.
+function renderSecurityDetail(widget, status) {
+  const title = widget.addText("SECURITY");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(8);
+
+  const addRow = (label, value) => {
+    const row = widget.addStack();
+    row.layoutVertically();
+    const l = row.addText(label);
+    l.font = Font.systemFont(10);
+    l.textColor = Color.gray();
+    const v = row.addText(value || "—");
+    v.font = Font.boldSystemFont(16);
+    widget.addSpacer(10);
+  };
+
+  addRow("ALARM", metricValue(status, "alarmStatus"));
+  const panic = metricValue(status, "panicAlarmStatus");
+  addRow("PANIC ALARM", panic === "UNDEFINED" ? null : panic);
+}
+
 // ===================== location =====================
 //
 // Confirmed live: "metrics.position.value.location" is {lat, lon, alt}, plus a bonus
@@ -1029,6 +1061,7 @@ const TILE_DEFS = {
   doors: {
     label: () => "DOORS",
     value: (status) => metricValue(status, "doorLockStatus", (d) => d.vehicleDoor === "ALL_DOORS"),
+    detail: "doors",
   },
   fuel: {
     label: (isEv) => (isEv ? "CHARGE" : "FUEL"),
@@ -1058,14 +1091,17 @@ const TILE_DEFS = {
   tires: {
     label: () => "TIRES",
     value: (status) => tireSummaryText(status),
+    detail: "tires",
   },
   windows: {
     label: () => "WINDOWS",
     value: (status) => windowSummaryText(status),
+    detail: "windows",
   },
   alarm: {
     label: () => "ALARM",
     value: (status) => metricValue(status, "alarmStatus"),
+    detail: "security",
   },
   panicAlarm: {
     label: () => "PANIC ALARM",
@@ -1075,6 +1111,7 @@ const TILE_DEFS = {
       const v = metricValue(status, "panicAlarmStatus");
       return v === "UNDEFINED" ? null : v;
     },
+    detail: "security",
   },
   ignition: {
     label: () => "IGNITION",
@@ -1083,6 +1120,7 @@ const TILE_DEFS = {
   health: {
     label: () => "HEALTH",
     value: (status) => healthAlertsSummaryText(status),
+    detail: "health",
   },
 };
 
@@ -1305,7 +1343,7 @@ async function buildWidget() {
         row.layoutHorizontally();
         rowKeys.forEach((key, idx) => {
           const def = TILE_DEFS[key];
-          addTile(row, def.label(isEv), def.value(status, units, isEv));
+          addTile(row, def.label(isEv), def.value(status, units, isEv), def.detail);
           if (idx < rowKeys.length - 1) row.addSpacer(16);
         });
       }
@@ -1340,12 +1378,39 @@ async function buildWidget() {
   return widget;
 }
 
+// Reached by tapping a doors/tires/windows/health tile (see addTile's detailKey) —
+// that tap opens scriptable:///run/<script>?detail=<key>, which launches this same
+// script outside the widget, landing here instead of the usual setup/menu flow.
+// Reuses the same verbose-render functions the widget blocks use, just presented as a
+// full-screen preview (presentLarge, for maximum room) instead of embedded in a widget.
+async function runDetailView(detailKey) {
+  const vin = loadVin();
+  const region = loadRegion();
+  const units = loadUnits();
+  if (!vin || !loadToken()) return;
+
+  const status = await getStatus(vin, REGIONS[region]);
+  const widget = new ListWidget();
+  widget.backgroundColor = Color.dynamic(new Color("#ffffff"), new Color("#1c1f26"));
+
+  if (detailKey === "doors") renderDoorsVerbose(widget, status, region);
+  else if (detailKey === "tires") renderTiresVerbose(widget, status, units);
+  else if (detailKey === "windows") renderWindowsVerbose(widget, status, region);
+  else if (detailKey === "health") renderHealthAlertsVerbose(widget, status);
+  else if (detailKey === "security") renderSecurityDetail(widget, status);
+  else return;
+
+  await widget.presentLarge();
+}
+
 // ===================== entry point =====================
 
 if (config.runsInWidget) {
   const widget = await buildWidget();
   Script.setWidget(widget);
   Script.complete();
+} else if (args.queryParameters && args.queryParameters.detail) {
+  await runDetailView(args.queryParameters.detail);
 } else if (!loadVin() || !loadToken()) {
   await runSetup();
 } else {

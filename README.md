@@ -116,6 +116,24 @@ on their own row below it, in metric, with no header. Leave it blank to get the 
 unrecognized token is silently ignored rather than erroring, so a typo just falls back to the
 default rather than breaking the widget.
 
+## Tap a tile for more detail
+
+On medium and large widgets, tapping `doors`, `tires`, `windows`, `health`, `alarm`, or
+`panicAlarm` opens that item's full detail instead of the whole widget opening this script's
+menu — the same content as the matching verbose block (`doorsVerbose`, etc.), or for
+`alarm`/`panicAlarm` a combined "security" view, shown full-screen rather than squeezed into a
+widget-sized space. The other tiles (`fuel`, `range`, `odometer`, `temp`, `oil`, `battery12v`,
+`ignition`) don't get this — each is already a single value with nothing more underneath it to
+drill into, so a tap-through would just repeat the same number.
+
+Small widgets can't do per-tile taps at all (their only tap target is the whole widget, which
+already opens the menu) — this is the same medium/large-only limitation the `location` block's
+Maps link runs into, both coming from `WidgetStack.url`/`WidgetText.url`.
+
+Mechanically, the tap opens `scriptable:///run/<this script's name>?detail=<key>`, which
+launches this same script outside the widget; it reads `args.queryParameters.detail` and shows
+that item via `ListWidget.presentLarge()` instead of the usual setup/menu flow.
+
 ## Units
 
 Ford's API always reports raw values in metric (km, °C, kPa) regardless of your vehicle's
@@ -183,3 +201,11 @@ The raw metric key names used for range, outside temp, oil life, and 12V battery
 against this script's own live output — if any of those tiles come up blank, use the in-script
 menu's "Refresh status" (which opens the full raw JSON via QuickLook) to find the right key and
 adjust the `metricValue(...)` calls in `buildWidget()`.
+
+Tap-to-detail (doors/tires/windows/health/alarm/panicAlarm) is the one piece of this project
+that genuinely can't be verified the way everything else here has been — it needs a real tap on
+a real medium/large widget to confirm the `scriptable:///run/...?detail=...` round-trip and
+`presentLarge()` actually behave as documented, which isn't something a token export or a Node
+simulation can stand in for. The data each detail view shows is the same already-verified logic
+as the matching verbose block, so if the tap itself works, the content should be correct; if
+tapping does nothing or errors, that's the mechanism to debug, not the data.
