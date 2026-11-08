@@ -519,6 +519,13 @@ function formatPercent(v) {
   return `${Math.round(v)}%`;
 }
 
+// remoteStartCountdownTimer's raw value is seconds (confirmed live: 900 right after a
+// successful remote start, i.e. Ford's standard 15-minute window) -- shown as minutes.
+function formatRemoteStartCountdown(seconds) {
+  if (seconds == null || typeof seconds !== "number") return null;
+  return seconds <= 0 ? "OFF" : `${Math.round(seconds / 60)} min`;
+}
+
 // ===================== setup (interactive only — run the script, don't just add the widget) =====================
 
 async function promptText(title, message, placeholder, defaultValue) {
@@ -1408,6 +1415,24 @@ const TILE_DEFS = {
   health: {
     label: () => "HEALTH",
     value: (status) => healthAlertsSummaryText(status),
+  },
+  hood: {
+    label: () => "HOOD",
+    value: (status) => metricValue(status, "hoodStatus"),
+  },
+  parkingBrake: {
+    label: () => "PARK BRAKE",
+    value: (status) => metricValue(status, "parkingBrakeStatus"),
+  },
+  remoteStartTimer: {
+    label: () => "REMOTE START",
+    value: (status) => formatRemoteStartCountdown(metricValue(status, "remoteStartCountdownTimer")),
+  },
+  ambientTemp: {
+    label: () => "AMBIENT",
+    // Separate from outsideTemperature ("temp" tile) -- reads 0.0 on the vehicle this
+    // was verified against, meaning of the difference between the two unconfirmed.
+    value: (status, units) => formatTempC(metricValue(status, "ambientTemp"), units),
   },
 };
 

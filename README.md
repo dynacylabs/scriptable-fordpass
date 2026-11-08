@@ -174,7 +174,10 @@ kinds of tokens — order doesn't matter except for item order:
   "DISARMED" — the security system's armed state), `panicAlarm` (Ford's dedicated
   triggered/panic-event field, kept separate from `alarm` rather than guessed-merged — see
   Status below), `ignition` (e.g. "OFF"), `health` — "OK", or "N ALERT(S)" if any of ~45
-  individual warning lights (check engine, low oil pressure, TPMS fault, etc.) are active.
+  individual warning lights (check engine, low oil pressure, TPMS fault, etc.) are active,
+  `hood` (e.g. "CLOSED"), `parkingBrake` (e.g. "OFF"), `remoteStartTimer` — "OFF", or minutes
+  remaining during an active remote start, `ambientTemp` — a second temperature reading,
+  distinct from `temp` (see Status below for what's unconfirmed about it).
 - Full-width block names, each always on its own row: `doorsVerbose` — an alternative to
   `doors`, a 2×2 table (front driver/passenger side correctly placed per your region's driving
   side, rear left/right, plus a tailgate row if present). `tiresVerbose` — an alternative to
@@ -315,3 +318,11 @@ about. What's unverified live, same as everywhere else UI-interaction-dependent:
 "Manage vehicles" screen's taps and the Parameter-field VIN matching end-to-end on a real
 device — the account used for testing only has one vehicle, so the multi-vehicle *picker* list
 itself couldn't be exercised against a real 2+-vehicle account.
+
+`hood`, `parkingBrake`, `remoteStartTimer`, and `ambientTemp` are all confirmed live:
+`hoodStatus.value`: "CLOSED"; `parkingBrakeStatus.value`: "OFF" (plus an unused
+`parkingBrakeType`: "MECHANICAL"); `remoteStartCountdownTimer.value`: raw seconds, confirmed via
+the earlier live remote-start test (900 right after a successful start, i.e. Ford's 15-minute
+window) — shown as minutes, "OFF" when 0. `ambientTemp` itself reads 0.0°C/32°F on this vehicle
+right now, clearly distinct from `outsideTemperature`'s 9.25°C — but *what* makes them different
+(cabin vs. engine-bay sensor, or something else) isn't confirmed; shown as-is either way.
