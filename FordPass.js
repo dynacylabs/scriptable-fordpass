@@ -921,6 +921,14 @@ const BLOCK_DEFS = {
 // names (see TILE_DEFS/BLOCK_DEFS) with "imperial"/"metric". Order controls display
 // order. Unrecognized tokens are ignored rather than erroring, so a typo just falls
 // back to defaults instead of breaking the widget. Example: "doors,fuel,odometer,metric".
+// Case-insensitive lookup from a lowercased token back to the real (possibly camelCase,
+// e.g. "doorsVerbose") key in TILE_DEFS/BLOCK_DEFS — matching tokens were lowercased
+// below (needed for "imperial"/"metric"/"notitle"), which silently dropped any item
+// whose own key wasn't already all-lowercase, with no error, just a missing item.
+const ITEM_KEYS_BY_LOWER = Object.fromEntries(
+  [...Object.keys(TILE_DEFS), ...Object.keys(BLOCK_DEFS)].map((k) => [k.toLowerCase(), k])
+);
+
 function parseWidgetParameter(paramStr) {
   const tokens = String(paramStr || "")
     .split(",")
@@ -932,7 +940,7 @@ function parseWidgetParameter(paramStr) {
   for (const t of tokens) {
     if (t === "imperial" || t === "metric") units = t;
     else if (t === "notitle") titleMode = "hidden";
-    else if (TILE_DEFS[t] || BLOCK_DEFS[t]) items.push(t);
+    else if (ITEM_KEYS_BY_LOWER[t]) items.push(ITEM_KEYS_BY_LOWER[t]);
   }
   return { units, titleMode, items: items.length ? items : null };
 }
