@@ -179,7 +179,12 @@ kinds of tokens — order doesn't matter except for item order:
   remaining during an active remote start, `ambientTemp` — a second temperature reading,
   distinct from `temp` (see Status below for what's unconfirmed about it), `seatBelt` — "OK",
   or "N UNBUCKLED" if any occupant's belt is unbuckled, `xevPlugCharger` — Ford's raw plug
-  state (see Status below for why this is unconfirmed on a non-plug-in vehicle).
+  state (see Status below for why this is unconfirmed on a non-plug-in vehicle). Driving
+  telemetry (meaningful mainly while actually driving, all opt-in): `speed`, `accelPedal` —
+  accelerator pedal %, `brakePedal` — raw status, `brakeTorque`, `engineSpeed` (RPM), `gear`,
+  `transTorque`, `wheelTorque` — raw status, `yawRate`, `tripEconomy`, `tripEvDistance`, and
+  `acceleration` — raw accelerometer magnitude. Several of these show a bare number with no
+  unit label because the real unit couldn't be confirmed (see Status below).
 - Full-width block names, each always on its own row: `doorsVerbose` — an alternative to
   `doors`, a 2×2 table (front driver/passenger side correctly placed per your region's driving
   side, rear left/right, plus a tailgate row if present). `tiresVerbose` — an alternative to
@@ -191,7 +196,11 @@ kinds of tokens — order doesn't matter except for item order:
   to `health`: "No active alerts", or the full list of currently-active warning lights by name,
   in orange. `seatBeltVerbose` — an alternative to `seatBelt`: each occupant role (driver,
   passenger — rear roles unconfirmed, not shown by this vehicle) and its buckled/unbuckled
-  state, in orange when unbuckled. `location` — last known coordinates plus compass direction,
+  state, in orange when unbuckled. `accelerationVerbose` — raw accelerometer X/Y/Z, since the
+  `acceleration` tile's magnitude collapses that into one number. `customMetricsVerbose` —
+  whatever per-vehicle custom signals Ford happens to expose (labeled by their readable
+  suffix; the full key is a vehicle-specific signal ID, not a stable field name to show
+  as-is). `location` — last known coordinates plus compass direction,
   tappable to open Apple Maps on medium/large widgets (small widgets show it as plain text —
   their only tap target is the whole widget, which already opens this script's menu).
   `commands` — Lock/Unlock/Start/Stop/Refresh buttons, medium/large widgets only; tapping one
@@ -343,3 +352,32 @@ on this vehicle, which is a non-plug-in ICE F-150 with no charge port at all. Ei
 returns a meaningless default for this field on vehicles it doesn't apply to, or it means
 something else entirely here — unconfirmed either way. Shown as-is (opt-in) since it should be
 meaningful for plug-in hybrid/EV owners even though it clearly isn't here.
+
+The remaining driving-telemetry fields (`speed`, `accelPedal`, `brakePedal`, `brakeTorque`,
+`engineSpeed`, `engineCoolantTemp`, `gear`, `transTorque`, `wheelTorque`, `yawRate`,
+`tripEconomy`, `tripEvDistance`, `acceleration`, `customMetrics`) are all confirmed present and
+live, but every numeric one was only ever observed at rest (vehicle parked the whole time this
+was tested) — `speed: 0`, `engineSpeed: 0`, `torqueAtTransmission: 0`, `tripFuelEconomy: 0`,
+etc. — so a resting zero confirms the field exists and the key name is right, but can't confirm
+unit or scale for anything that would only move off zero while actually driving:
+- `speed` is assumed km/h, by analogy with every other distance-based field (odometer,
+  fuelRange) always reporting raw km regardless of region — not independently confirmed.
+- `accelPedal` is assumed a 0-100 percentage, by analogy with fuelLevel/oilLifeRemaining —
+  likewise not independently confirmed.
+- `brakeTorque`, `transTorque` (Nm), and `yawRate` (deg/s) have no confirmed unit at all —
+  shown as bare numbers rather than guessing a label that might be wrong.
+- `tripEconomy` (raw `tripFuelEconomy`) could be L/100km, km/L, or mpg-style — also shown
+  as a bare number for the same reason.
+- `tripEvDistance` (raw `tripXevBatteryDistanceAccumulated`) is assumed km, same reasoning as
+  `speed`.
+- `acceleration` is a 3-axis accelerometer reading (`{x, y, z}`), not a simple scalar; the
+  tile shows the combined magnitude (√(x²+y²+z²), ~1.18 at rest) and `accelerationVerbose`
+  shows the raw per-axis values — whether the unit is g, m/s², or something else is
+  unconfirmed; 1.18 being close to (but not exactly) 1g while parked is suggestive, not proof.
+- `brakePedal`, `gear`, `wheelTorque` are plain Ford status strings (confirmed `"ON"`,
+  `"PARK"`, `"OFF"` respectively) shown verbatim, same treatment as `hood`/`ignition`/etc.
+- `customMetrics` keys are per-vehicle signal UUIDs
+  (`aui:signal:<uuid>:custom:<name>`), not stable field names — `customMetricsVerbose` lists
+  whatever the vehicle happens to report, labeled by the readable suffix after the last `:`.
+  This vehicle currently reports 5 (acceleration/deceleration/cruising coaching scores, trip
+  length, trip fuel consumption) — a different vehicle may report a completely different set.

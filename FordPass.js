@@ -526,6 +526,23 @@ function formatRemoteStartCountdown(seconds) {
   return seconds <= 0 ? "OFF" : `${Math.round(seconds / 60)} min`;
 }
 
+// "speed"'s raw value was only confirmed at 0 (vehicle parked) -- extending the same
+// always-km assumption as formatDistanceKm by analogy, since Ford normalizes every other
+// distance-based field the same way, but a nonzero reading to confirm the conversion
+// direction live was never obtained (would require driving the vehicle during testing).
+function formatSpeedKmh(kmh, units) {
+  if (kmh == null || typeof kmh !== "number") return null;
+  return units === "imperial" ? `${Math.round(kmh * 0.621371)} mph` : `${Math.round(kmh)} km/h`;
+}
+
+// Raw units for these are genuinely unconfirmed (no Ford/ha-fordpass documentation found,
+// and the live value alone doesn't reveal the unit) -- shown as bare numbers rather than
+// guessing a label that might be wrong. See README Status section.
+function formatRawNumber(v, decimals) {
+  if (v == null || typeof v !== "number") return null;
+  return decimals ? v.toFixed(decimals) : `${Math.round(v)}`;
+}
+
 // ===================== setup (interactive only — run the script, don't just add the widget) =====================
 
 async function promptText(title, message, placeholder, defaultValue) {
@@ -1133,6 +1150,83 @@ function renderHealthAlertsVerbose(widget, status) {
   }
 }
 
+// ===================== driving telemetry =====================
+//
+// Confirmed live, all while parked (so only the at-rest/zero values could be checked,
+// never an actual moving reading): speed, acceleratorPedalPosition, brakePedalStatus,
+// brakeTorque, engineSpeed, engineCoolantTemp, gearLeverPosition, torqueAtTransmission,
+// wheelTorqueStatus, yawRate, tripFuelEconomy, tripXevBatteryDistanceAccumulated,
+// acceleration, customMetrics -- all present with the shapes below, confirmed via the
+// persisted debug token, same as every other field in this script. Several raw units
+// (brakeTorque/torqueAtTransmission's Nm, yawRate's deg/s, tripFuelEconomy's rate) are
+// an educated guess rather than confirmed, since the vehicle being parked means every
+// test value is 0 and a 0 doesn't prove a unit -- flagged here and in the README.
+function accelerationMagnitude(status) {
+  const v = metric(status, "acceleration.value");
+  if (!v || typeof v.x !== "number") return null;
+  return Math.sqrt((v.x || 0) ** 2 + (v.y || 0) ** 2 + (v.z || 0) ** 2);
+}
+
+function renderAccelerationVerbose(widget, status) {
+  const v = metric(status, "acceleration.value");
+
+  const title = widget.addText("ACCELEROMETER (RAW)");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(3);
+
+  if (!v || typeof v.x !== "number") {
+    const t = widget.addText("No data");
+    t.font = Font.systemFont(11);
+    t.textColor = Color.gray();
+    return;
+  }
+
+  const t = widget.addText(`X ${v.x.toFixed(2)}  Y ${v.y.toFixed(2)}  Z ${v.z.toFixed(2)}`);
+  t.font = Font.boldSystemFont(11);
+  widget.addSpacer(2);
+  const note = widget.addText("units unconfirmed");
+  note.font = Font.systemFont(9);
+  note.textColor = Color.gray();
+}
+
+// customMetrics' keys are per-vehicle signal UUIDs (e.g.
+// "aui:signal:<uuid>:custom:accumulated-acceleration-coaching-score") -- not stable
+// field names to hardcode a tile per key against, so this just lists whatever keys the
+// vehicle happens to report, labeled by the readable suffix after the last ":".
+function customMetricLabel(key) {
+  const suffix = key.split(":").pop() || key;
+  return humanizeStatus(suffix.replace(/-/g, "_"));
+}
+
+function renderCustomMetricsVerbose(widget, status) {
+  const metrics = metric(status, "customMetrics") || {};
+  const entries = Object.entries(metrics);
+
+  const title = widget.addText("CUSTOM METRICS");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(3);
+
+  if (entries.length === 0) {
+    const t = widget.addText("No data");
+    t.font = Font.systemFont(11);
+    t.textColor = Color.gray();
+    return;
+  }
+
+  for (const [key, entry] of entries) {
+    const row = widget.addStack();
+    row.layoutHorizontally();
+    const label = row.addText(customMetricLabel(key));
+    label.font = Font.systemFont(11);
+    row.addSpacer();
+    const value = row.addText(typeof entry.value === "number" ? entry.value.toFixed(2) : String(entry.value));
+    value.font = Font.boldSystemFont(11);
+    widget.addSpacer(4);
+  }
+}
+
 // ===================== location =====================
 //
 // Confirmed live: "metrics.position.value.location" is {lat, lon, alt}, plus a bonus
@@ -1488,6 +1582,63 @@ const TILE_DEFS = {
     // as-is; this is opt-in, so no harm in exposing an unclear field.
     value: (status) => metricValue(status, "xevPlugChargerStatus"),
   },
+  speed: {
+    label: () => "SPEED",
+    value: (status, units) => formatSpeedKmh(metricValue(status, "speed"), units),
+  },
+  accelPedal: {
+    label: () => "ACCEL PEDAL",
+    // Assumed 0-100 by analogy with fuelLevel/oilLifeRemaining -- only ever confirmed
+    // at 0 (vehicle parked), so the assumed range is unconfirmed.
+    value: (status) => formatPercent(metricValue(status, "acceleratorPedalPosition")),
+  },
+  brakePedal: {
+    label: () => "BRAKE PEDAL",
+    value: (status) => metricValue(status, "brakePedalStatus"),
+  },
+  brakeTorque: {
+    label: () => "BRAKE TORQUE",
+    value: (status) => formatRawNumber(metricValue(status, "brakeTorque")),
+  },
+  engineSpeed: {
+    label: () => "ENGINE RPM",
+    value: (status) => formatRawNumber(metricValue(status, "engineSpeed")),
+  },
+  engineCoolantTemp: {
+    label: () => "COOLANT",
+    value: (status, units) => formatTempC(metricValue(status, "engineCoolantTemp"), units),
+  },
+  gear: {
+    label: () => "GEAR",
+    value: (status) => metricValue(status, "gearLeverPosition"),
+  },
+  transTorque: {
+    label: () => "TRANS TORQUE",
+    value: (status) => formatRawNumber(metricValue(status, "torqueAtTransmission")),
+  },
+  wheelTorque: {
+    label: () => "WHEEL TORQUE",
+    value: (status) => metricValue(status, "wheelTorqueStatus"),
+  },
+  yawRate: {
+    label: () => "YAW RATE",
+    value: (status) => formatRawNumber(metricValue(status, "yawRate"), 2),
+  },
+  tripEconomy: {
+    label: () => "TRIP ECONOMY",
+    value: (status) => formatRawNumber(metricValue(status, "tripFuelEconomy"), 1),
+  },
+  tripEvDistance: {
+    label: () => "EV TRIP DIST",
+    value: (status, units) => formatDistanceKm(metricValue(status, "tripXevBatteryDistanceAccumulated"), units),
+  },
+  acceleration: {
+    label: () => "ACCEL (RAW)",
+    value: (status) => {
+      const m = accelerationMagnitude(status);
+      return m == null ? null : m.toFixed(2);
+    },
+  },
 };
 
 const DEFAULT_TILES_SMALL = ["doors", "fuel"];
@@ -1522,6 +1673,14 @@ const BLOCK_DEFS = {
   seatBeltVerbose: {
     label: () => "SEAT BELTS (VERBOSE)",
     render: async (widget, status) => renderSeatBeltVerbose(widget, status),
+  },
+  accelerationVerbose: {
+    label: () => "ACCELEROMETER (VERBOSE)",
+    render: async (widget, status) => renderAccelerationVerbose(widget, status),
+  },
+  customMetricsVerbose: {
+    label: () => "CUSTOM METRICS (VERBOSE)",
+    render: async (widget, status) => renderCustomMetricsVerbose(widget, status),
   },
   location: {
     label: () => "LOCATION",
