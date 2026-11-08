@@ -77,6 +77,7 @@ const KEYCHAIN_UNITS_KEY = "fordconnect_units";
 const KEYCHAIN_DEFAULT_TILES_KEY = "fordconnect_default_tiles";
 const KEYCHAIN_TITLE_MODE_KEY = "fordconnect_title_mode";
 const KEYCHAIN_MAP_PROVIDER_KEY = "fordconnect_map_provider";
+const KEYCHAIN_GO_HOME_ENABLED_KEY = "fordconnect_go_home_enabled";
 const EXPIRY_SKEW_MS = 60 * 1000;
 
 // ===================== small helpers (no Web APIs in Scriptable's JS runtime) =====================
@@ -211,6 +212,20 @@ function loadMapProvider() {
 
 function saveMapProvider(provider) {
   Keychain.set(KEYCHAIN_MAP_PROVIDER_KEY, provider);
+}
+
+// Scriptable has no API to check whether a named Shortcut actually exists -- Shortcuts
+// is a separate app with nothing shared, and even a "probe" would have to open it to
+// find out, defeating the point. This is the practical substitute: a local yes/no you
+// confirm once (after actually creating the "Go Home" shortcut), checked before
+// attempting the handoff, instead of blindly opening Shortcuts on every command.
+// Defaults to false so nothing happens until you've confirmed it's set up.
+function loadGoHomeEnabled() {
+  return Keychain.contains(KEYCHAIN_GO_HOME_ENABLED_KEY) && Keychain.get(KEYCHAIN_GO_HOME_ENABLED_KEY) === "true";
+}
+
+function saveGoHomeEnabled(enabled) {
+  Keychain.set(KEYCHAIN_GO_HOME_ENABLED_KEY, enabled ? "true" : "false");
 }
 
 // The default item set (tiles and/or full-width blocks) used by any widget whose own
@@ -537,6 +552,7 @@ async function runMenu() {
   menu.addAction("Configure widget (tiles & units)");
   menu.addAction("Re-run setup / change VIN or region");
   menu.addAction("Export token (debug)");
+  menu.addAction(`"Go Home" after widget commands: ${loadGoHomeEnabled() ? "On" : "Off"} (tap to toggle)`);
   menu.addCancelAction("Close");
   const choice = await menu.presentSheet();
 
@@ -579,6 +595,27 @@ async function runMenu() {
       }
       a.addAction("OK");
       await a.presentAlert();
+    } else if (choice === 9) {
+      const enabling = !loadGoHomeEnabled();
+      const a = new Alert();
+      if (enabling) {
+        a.title = "Before you turn this on";
+        a.message =
+          `Have you created a Shortcut named exactly "${GO_HOME_SHORTCUT_NAME}" containing ` +
+          'just Apple\'s "Go to Home Screen" action? If not, do that first in the Shortcuts ' +
+          "app (see the README) — otherwise commands sent from the widget will open the " +
+          "Shortcuts app to an error instead of going home.";
+        a.addAction("Yes, I've created it — turn on");
+        a.addCancelAction("Not yet — cancel");
+        if ((await a.presentAlert()) === -1) return;
+        saveGoHomeEnabled(true);
+      } else {
+        saveGoHomeEnabled(false);
+        a.title = "Turned off";
+        a.message = "Widget commands will no longer try to go home afterward.";
+        a.addAction("OK");
+        await a.presentAlert();
+      }
     }
   } catch (err) {
     const a = new Alert();
@@ -1000,10 +1037,27 @@ async function runCommandFromWidget(cmdKey) {
 
   try {
     await sendCommand(vin, REGIONS[region], def.apiType);
-    // Success: skip the "Sent" popup and go straight home instead of leaving the user
-    // sitting in Scriptable. Errors still get a dialog -- that's actionable information,
-    // not just confirmation noise.
-    Safari.open(`shortcuts://run-shortcut?name=${encodeURIComponent(GO_HOME_SHORTCUT_NAME)}`);
+
+    // cancelRemoteStart specifically: live-tested twice against a real vehicle, and both
+    // times Ford's own command tracking got stuck at "queued", never confirming success
+    // — unlike every other command here, which do reliably confirm. Worth a heads-up
+    // instead of silently assuming it worked, since the truck may just keep running
+    // until the remote start times out on its own regardless of this tap.
+    if (cmdKey === "cancelRemoteStart") {
+      const a = new Alert();
+      a.title = "Sent";
+      a.message =
+        "The cancel command was sent, but there's no confirmation it reached the vehicle " +
+        "— it may not actually stop until the remote start times out on its own.";
+      a.addAction("OK");
+      await a.presentAlert();
+    }
+
+    // Skip going home otherwise (no popup for the other commands either) unless the
+    // "Go Home" shortcut has been confirmed set up — see loadGoHomeEnabled().
+    if (loadGoHomeEnabled()) {
+      Safari.open(`shortcuts://run-shortcut?name=${encodeURIComponent(GO_HOME_SHORTCUT_NAME)}`);
+    }
   } catch (err) {
     const a = new Alert();
     a.title = "Error";

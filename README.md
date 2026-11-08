@@ -74,6 +74,17 @@ fresh report. Two ways to send one:
 Commands are fire-and-forget — Ford confirms receipt, not that the vehicle executed it. Re-check
 the dashboard (or `fuel`/`tires`/etc.) a few seconds later to see it take effect.
 
+**Cancel remote start is unreliable — confirmed, not assumed.** Ford's command API is actually
+asynchronous: posting a command only queues it (`currentStatus: "REQUESTED"`), and the real
+outcome needs polling a separate endpoint (`GET .../commands/{id}`) to learn. Live-tested this
+directly against a real vehicle: `remoteStart` reliably resolves to a clean `SUCCESS` within
+seconds; `cancelRemoteStart`, sent twice in the same session, both times got stuck at
+`REQUEST_QUEUED` and never resolved to success or failure at all. So after a cancel sends, the
+widget now says plainly that there's no confirmation it reached the vehicle — it may just keep
+running until the remote start's own ~15-minute timeout. This script doesn't poll for outcomes
+on any command (same fire-and-forget design as before), so this honesty is specific to cancel,
+not a general confirmation feature.
+
 ### Returning to the home screen after a command
 
 After a `commands` widget button sends successfully, the script tries to land you back on the
@@ -82,18 +93,24 @@ included, is allowed to do that by itself; Apple doesn't expose that API. The on
 around it: hand off to a Shortcut that does nothing but Apple's own "Go to Home Screen" action,
 which *is* allowed to exit to the home screen.
 
-One-time setup (optional — if you skip this, commands still send fine, you'll just end up
-looking at the Shortcuts app afterward instead of your home screen):
+This only happens once you've confirmed it's set up — Scriptable has no way to check whether a
+Shortcut actually exists (Shortcuts is a separate app with nothing shared, and even checking
+would mean opening it, defeating the point), so instead of guessing, it's gated behind a setting
+you turn on yourself after creating the shortcut:
 
 1. Open the **Shortcuts** app → **+** (new shortcut).
 2. Add Action → search for **"Go to Home Screen"** → add it. It should be the only action in
    the shortcut.
 3. Rename the shortcut to exactly **`Go Home`** (tap the shortcut's name/settings at the top).
-4. Done — no need to add it to your home screen or run it manually.
+4. Run the script (not the widget) → **`"Go Home" after widget commands: Off (tap to toggle)`**
+   → confirm you've created it → it switches to **On**.
 
-If you'd rather use a different name, change `GO_HOME_SHORTCUT_NAME` near the top of
-`runCommandFromWidget()` in the script to match. Errors still show a dialog instead of going
-home — that's actionable information, not just confirmation noise, so it's not suppressed.
+Until you turn this on, commands still send fine — you'll just land wherever Scriptable would
+normally leave you afterward, same as before this feature existed, instead of risking a trip to
+the Shortcuts app for a shortcut that doesn't exist. If you'd rather use a different shortcut
+name, change `GO_HOME_SHORTCUT_NAME` near the top of `runCommandFromWidget()` in the script to
+match. Errors always show a dialog regardless of this setting — that's actionable information,
+not just confirmation noise, so it's never suppressed.
 
 ## Configuring a widget
 
