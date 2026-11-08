@@ -687,6 +687,35 @@ async function runVehicleManager() {
 
 // ===================== interactive menu =====================
 
+// A second-level sheet listing every write command, reached via the top-level menu's
+// single "Commands" action -- keeps the main menu from listing all five individually.
+// No confirm dialog here (unlike the widget-button flow): opening the script and then
+// picking a command from this list is already the deliberate action/confirmation step,
+// same reasoning the old flat Lock/Unlock/etc. actions always had.
+async function runCommandMenu(vin, regionCfg) {
+  const keys = Object.keys(WRITE_COMMANDS);
+  const menu = new Alert();
+  menu.title = "Commands";
+  for (const key of keys) menu.addAction(WRITE_COMMANDS[key].label);
+  menu.addCancelAction("Cancel");
+  const choice = await menu.presentSheet();
+  if (choice === -1) return;
+
+  const key = keys[choice];
+  const def = WRITE_COMMANDS[key];
+  await sendCommand(vin, regionCfg, def.apiType);
+
+  const a = new Alert();
+  a.title = "Sent";
+  a.message =
+    key === "cancelRemoteStart"
+      ? "The cancel command was sent, but there's no confirmation it reached the vehicle " +
+        "— it may not actually stop until the remote start times out on its own."
+      : "Command sent — commands are fire-and-forget, check status again in a few seconds.";
+  a.addAction("OK");
+  await a.presentAlert();
+}
+
 async function runMenu() {
   const vin = loadVin();
   const region = loadRegion();
@@ -699,17 +728,12 @@ async function runMenu() {
   menu.message = vin
     ? `${activeLabel}  ·  Region: ${region}${vehicles.length > 1 ? ` (${vehicles.length} vehicles)` : ""}`
     : "Not set up yet.";
-  menu.addAction("Refresh status");
-  menu.addAction("Lock");
-  menu.addAction("Unlock");
-  menu.addAction("Remote start");
-  menu.addAction("Cancel remote start");
-  menu.addAction("Request fresh report");
+  menu.addAction("View status (raw)");
+  menu.addAction("Commands");
   menu.addAction("Configure widget (tiles & units)");
   menu.addAction("Manage vehicles");
   menu.addAction("Re-run setup / change region");
   menu.addAction("Export token (debug)");
-  menu.addAction(`"Go Home" after widget commands: ${loadGoHomeEnabled() ? "On" : "Off"} (tap to toggle)`);
   menu.addCancelAction("Close");
   const choice = await menu.presentSheet();
 
@@ -717,27 +741,15 @@ async function runMenu() {
     if (choice === 0) {
       const status = await getStatus(vin, regionCfg);
       QuickLook.present(status);
-    } else if (choice >= 1 && choice <= 5) {
-      const commandByChoice = {
-        1: "lock",
-        2: "unlock",
-        3: "remoteStart",
-        4: "cancelRemoteStart",
-        5: "statusRefresh",
-      };
-      await sendCommand(vin, regionCfg, commandByChoice[choice]);
-      const a = new Alert();
-      a.title = "Sent";
-      a.message = "Command sent — commands are fire-and-forget, check status again in a few seconds.";
-      a.addAction("OK");
-      await a.presentAlert();
-    } else if (choice === 6) {
+    } else if (choice === 1) {
+      await runCommandMenu(vin, regionCfg);
+    } else if (choice === 2) {
       await runTileConfigurator();
-    } else if (choice === 7) {
+    } else if (choice === 3) {
       await runVehicleManager();
-    } else if (choice === 8) {
+    } else if (choice === 4) {
       await runSetup();
-    } else if (choice === 9) {
+    } else if (choice === 5) {
       const token = loadToken();
       const a = new Alert();
       if (!token) {
@@ -754,27 +766,6 @@ async function runMenu() {
       }
       a.addAction("OK");
       await a.presentAlert();
-    } else if (choice === 10) {
-      const enabling = !loadGoHomeEnabled();
-      const a = new Alert();
-      if (enabling) {
-        a.title = "Before you turn this on";
-        a.message =
-          `Have you created a Shortcut named exactly "${GO_HOME_SHORTCUT_NAME}" containing ` +
-          'just Apple\'s "Go to Home Screen" action? If not, do that first in the Shortcuts ' +
-          "app (see the README) — otherwise commands sent from the widget will open the " +
-          "Shortcuts app to an error instead of going home.";
-        a.addAction("Yes, I've created it — turn on");
-        a.addCancelAction("Not yet — cancel");
-        if ((await a.presentAlert()) === -1) return;
-        saveGoHomeEnabled(true);
-      } else {
-        saveGoHomeEnabled(false);
-        a.title = "Turned off";
-        a.message = "Widget commands will no longer try to go home afterward.";
-        a.addAction("OK");
-        await a.presentAlert();
-      }
     }
   } catch (err) {
     const a = new Alert();
@@ -1565,6 +1556,34 @@ async function runTileConfigurator() {
       };
       table.addRow(vehicleRow);
     }
+
+    // Unlike Units/Title/Map/Vehicle above, this saves immediately on tap rather than
+    // waiting for "Save as default" below -- it's a global command-flow setting, not a
+    // display preference, so there's no "default vs. copy for one widget" distinction
+    // that would apply to it.
+    const goHomeRow = new UITableRow();
+    goHomeRow.dismissOnSelect = false;
+    goHomeRow.addText('"Go Home" after widget commands', loadGoHomeEnabled() ? "On" : "Off");
+    goHomeRow.onSelect = async () => {
+      const enabling = !loadGoHomeEnabled();
+      if (enabling) {
+        const a = new Alert();
+        a.title = "Before you turn this on";
+        a.message =
+          `Have you created a Shortcut named exactly "${GO_HOME_SHORTCUT_NAME}" containing ` +
+          'just Apple\'s "Go to Home Screen" action? If not, do that first in the Shortcuts ' +
+          "app (see the README) — otherwise commands sent from the widget will open the " +
+          "Shortcuts app to an error instead of going home.";
+        a.addAction("Yes, I've created it — turn on");
+        a.addCancelAction("Not yet — cancel");
+        if ((await a.presentAlert()) === -1) return;
+        saveGoHomeEnabled(true);
+      } else {
+        saveGoHomeEnabled(false);
+      }
+      render();
+    };
+    table.addRow(goHomeRow);
 
     for (const key of orderedItemKeys) {
       const row = new UITableRow();

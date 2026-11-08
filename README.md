@@ -54,10 +54,12 @@ anywhere; they live only in Scriptable's on-device `Keychain`.
 4. Once it says "Connected", long-press your home screen, add a widget, choose Scriptable, and
    pick this script.
 
-Running the script again later (instead of just viewing the widget) opens a menu: refresh
-status, lock, unlock, remote start, cancel remote start, request a fresh report, configure the
-widget (see below), manage vehicles (see Multiple vehicles below), re-run setup (to change your
-region or sign in again), or Export token (debug).
+Running the script again later (instead of just viewing the widget) opens a menu: **View status
+(raw)** (read-only, shows whatever Ford already has cached), **Commands** (a submenu of every
+write command — lock, unlock, remote start, cancel remote start, request a fresh report; see
+Write commands below for the distinction between this and "View status"), **Configure widget**
+(see below), **Manage vehicles** (see Multiple vehicles below), **Re-run setup** (to change your
+region or sign in again), or **Export token (debug)**.
 
 ## Multiple vehicles
 
@@ -84,10 +86,13 @@ runs, no action needed. Region is account-wide (one Ford sign-in, one region), n
 ## Write commands
 
 Every command Ford's API supports: lock, unlock, remote start, cancel remote start, request a
-fresh report. Two ways to send one:
+fresh report ("Refresh" here — not to be confused with the menu's separate **View status
+(raw)**, which just re-reads whatever Ford already has cached; this one actually asks the
+*vehicle* to wake up and report in). Two ways to send one:
 
-- **In-script menu** (always available) — run the script, pick the command. Opening the script
-  is itself a deliberate action, which is as close to a confirmation step as this already had.
+- **In-script menu → Commands** (always available) — run the script, tap Commands, pick one.
+  Opening the script is itself a deliberate action, which is as close to a confirmation step as
+  this already had.
 - **`commands` widget block** (medium/large widgets, opt-in via the configurator or Parameter
   field) — Lock/Unlock/Start/Stop/Refresh buttons directly on the widget. Tapping one still has
   to open the app (the same `WidgetStack.url` mechanism as `location`, and the same limitation
@@ -126,8 +131,8 @@ you turn on yourself after creating the shortcut:
 2. Add Action → search for **"Go to Home Screen"** → add it. It should be the only action in
    the shortcut.
 3. Rename the shortcut to exactly **`Go Home`** (tap the shortcut's name/settings at the top).
-4. Run the script (not the widget) → **`"Go Home" after widget commands: Off (tap to toggle)`**
-   → confirm you've created it → it switches to **On**.
+4. Run the script (not the widget) → **Configure widget (tiles & units)** → the
+   **`"Go Home" after widget commands`** row → confirm you've created it → it switches to **On**.
 
 Until you turn this on, commands still send fine — you'll just land wherever Scriptable would
 normally leave you afterward, same as before this feature existed, instead of risking a trip to
@@ -147,7 +152,8 @@ defaults in the next section — but you don't have to type this by hand:
 Run the script (tap it, don't just view the widget) → **Configure widget (tiles & units)**
 opens a checklist: tap a row to toggle that tile on/off, tap Units to flip imperial/metric, tap
 Title to cycle the header, tap Map to switch between Apple Maps and Google Maps for the
-`location` block's link, then either:
+`location` block's link, tap `"Go Home" after widget commands` to turn that on/off (saves
+immediately, unlike the rows below — see Returning to the home screen above), then either:
 
 - **Save as default for blank-parameter widgets** — applies to every widget whose Parameter
   field is empty (the common case if you only have one widget).
