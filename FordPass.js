@@ -573,7 +573,7 @@ async function buildWidget() {
     const status = await getStatus(vin, REGIONS[region]);
     const compact = config.widgetFamily === "small";
 
-    const title = widget.addText(`FordPass (${units === "imperial" ? "mi/°F" : "km/°C"})`);
+    const title = widget.addText("FordPass");
     title.font = Font.boldSystemFont(13);
     widget.addSpacer(8);
 
