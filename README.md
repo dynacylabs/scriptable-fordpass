@@ -48,14 +48,38 @@ anywhere; they live only in Scriptable's on-device `Keychain`.
    repo via Scriptable's "+" menu → import from URL).
 3. Run the script once (tap it — don't add it as a widget yet). It'll ask for your region
    (leave as `usa` unless you're outside North America — see the `REGIONS` table in the script
-   for the full list) and your VIN, then open a sign-in window. Sign in with your real Ford
-   account there.
+   for the full list), then open a sign-in window. Sign in with your real Ford account there.
+   Once signed in, it fetches your account's vehicles and lets you pick which one(s) to add —
+   no VIN typing needed, no typo risk.
 4. Once it says "Connected", long-press your home screen, add a widget, choose Scriptable, and
    pick this script.
 
 Running the script again later (instead of just viewing the widget) opens a menu: refresh
 status, lock, unlock, remote start, cancel remote start, request a fresh report, configure the
-widget (see below), or re-run setup (to change your VIN/region or sign in again).
+widget (see below), manage vehicles (see Multiple vehicles below), re-run setup (to change your
+region or sign in again), or Export token (debug).
+
+## Multiple vehicles
+
+If your Ford account has more than one Ford/Lincoln on it, you can add as many as you want.
+
+- Run the script → **Manage vehicles** → tap any vehicle under "Add from your account" to add
+  it, no VIN typing. Already-added vehicles show with a `●`/`○` marking which one is currently
+  **active** — tap a vehicle to set it active or remove it.
+- The **active** vehicle is what the menu operates on, and what any widget shows when its
+  Parameter field doesn't say otherwise.
+- Each widget can show a *different* vehicle: in the configurator, a **Vehicle** row appears
+  (only when you have 2+ vehicles) for the "Copy as Parameter text" action — pick one, copy, and
+  paste into that specific widget's Parameter field. You can also just add the VIN itself as a
+  bare token to a Parameter field by hand, e.g. `doors,fuel,1FTXXXXXXXXXXXXXX` — matching is
+  case-insensitive and only recognizes VINs you've already added via "Manage vehicles".
+- Command buttons (`commands` block) always act on whichever vehicle that specific widget is
+  showing, not whatever the account's "active" vehicle happens to be at the time — each
+  button's own link carries the VIN with it.
+
+If you only ever had one vehicle before this feature existed, nothing changes for you — your
+existing VIN is migrated into this system automatically and silently the first time the script
+runs, no action needed. Region is account-wide (one Ford sign-in, one region), not per-vehicle.
 
 ## Write commands
 
@@ -165,6 +189,8 @@ kinds of tokens — order doesn't matter except for item order:
 - `notitle`, to hide the "FordPass" header entirely and reclaim that space.
 - `applemaps` or `googlemaps`, to pin that widget's `location` link to a specific maps app
   regardless of the saved preference (default is Apple Maps).
+- A vehicle's VIN (if you've added more than one — see Multiple vehicles above), to pin that
+  widget to a specific vehicle regardless of which one is set as account-active.
 
 Example: `doorsVerbose,fuel,odometer,metric,notitle` shows the door table, then fuel + odometer
 on their own row below it, in metric, with no header. Leave it blank to get the saved default
@@ -265,3 +291,21 @@ send) is a well-established community pattern for this exact problem, not someth
 here, but it's equally unverified live for the same reason — needs a real device with the "Go
 Home" shortcut actually created to confirm it lands cleanly on the home screen rather than
 stalling on the Shortcuts app.
+
+Two corrections found during a full raw-telemetry inventory pass: the `temp` tile had been
+reading a metric key called `outsideTemp`, which doesn't exist — the real key is
+`outsideTemperature` — so it had been silently showing `—` since the tile was added; fixed and
+confirmed against real data (9.25°C). Separately, the vehicle's `nickName` field (the thing the
+earlier, reverted nickname-title-mode attempt was looking for) does exist, but at the garage
+vehicle object's **top level**, not nested inside `profile` like every guess that attempt tried
+— it just happens to be `null` for this account's vehicle (never set via whatever channel
+populates it), which is why re-adding that feature wasn't prioritized here, not because the
+field doesn't exist.
+
+Multi-vehicle support (adding, removing, setting active, and the per-widget VIN override) was
+verified directly: ran the real garage-fetch and migration logic through Node against the
+actual API response shape and a simulated pre-existing single-VIN install, not just reasoned
+about. What's unverified live, same as everywhere else UI-interaction-dependent: the actual
+"Manage vehicles" screen's taps and the Parameter-field VIN matching end-to-end on a real
+device — the account used for testing only has one vehicle, so the multi-vehicle *picker* list
+itself couldn't be exercised against a real 2+-vehicle account.

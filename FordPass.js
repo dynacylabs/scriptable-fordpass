@@ -71,7 +71,9 @@ const REGIONS = {
 };
 
 const KEYCHAIN_TOKEN_KEY = "fordconnect_fordpass_token";
-const KEYCHAIN_VIN_KEY = "fordconnect_vin";
+const KEYCHAIN_VIN_KEY = "fordconnect_vin"; // legacy single-VIN storage, read only for migration
+const KEYCHAIN_VEHICLES_KEY = "fordconnect_vehicles";
+const KEYCHAIN_ACTIVE_VIN_KEY = "fordconnect_active_vin";
 const KEYCHAIN_REGION_KEY = "fordconnect_region";
 const KEYCHAIN_UNITS_KEY = "fordconnect_units";
 const KEYCHAIN_DEFAULT_TILES_KEY = "fordconnect_default_tiles";
@@ -180,8 +182,47 @@ function saveToken(token) {
   Keychain.set(KEYCHAIN_TOKEN_KEY, JSON.stringify(token));
 }
 
+// Multi-vehicle storage: a list of {vin, label} plus which one is "active" (used by the
+// menu and by any widget whose Parameter field doesn't name a specific vehicle). Older
+// installs only ever had a single VIN in KEYCHAIN_VIN_KEY -- migrated transparently into
+// a one-item list the first time loadVehicles() runs after this update.
+function loadVehicles() {
+  if (Keychain.contains(KEYCHAIN_VEHICLES_KEY)) {
+    try {
+      return JSON.parse(Keychain.get(KEYCHAIN_VEHICLES_KEY));
+    } catch (e) {
+      return [];
+    }
+  }
+  if (Keychain.contains(KEYCHAIN_VIN_KEY)) {
+    const migrated = [{ vin: Keychain.get(KEYCHAIN_VIN_KEY), label: Keychain.get(KEYCHAIN_VIN_KEY) }];
+    saveVehicles(migrated);
+    return migrated;
+  }
+  return [];
+}
+
+function saveVehicles(vehicles) {
+  Keychain.set(KEYCHAIN_VEHICLES_KEY, JSON.stringify(vehicles));
+}
+
+function loadActiveVin() {
+  const vehicles = loadVehicles();
+  if (Keychain.contains(KEYCHAIN_ACTIVE_VIN_KEY)) {
+    const vin = Keychain.get(KEYCHAIN_ACTIVE_VIN_KEY);
+    if (vehicles.some((v) => v.vin === vin)) return vin;
+  }
+  return vehicles.length ? vehicles[0].vin : null;
+}
+
+function saveActiveVin(vin) {
+  Keychain.set(KEYCHAIN_ACTIVE_VIN_KEY, vin);
+}
+
+// Alias kept for existing call sites throughout the script -- "the VIN" now means "the
+// active vehicle's VIN" rather than the only one that could ever exist.
 function loadVin() {
-  return Keychain.contains(KEYCHAIN_VIN_KEY) ? Keychain.get(KEYCHAIN_VIN_KEY) : null;
+  return loadActiveVin();
 }
 
 function loadRegion() {
@@ -510,20 +551,34 @@ async function runSetup() {
   }
   Keychain.set(KEYCHAIN_REGION_KEY, region);
 
-  const vin = await promptText("Vehicle VIN", "It's on your registration or door-jamb sticker.", "1FTxxxxxxxxxxxxxx", loadVin());
-  if (!vin) return false;
-  Keychain.set(KEYCHAIN_VIN_KEY, vin);
+  // Only force a fresh sign-in if not already signed in -- this same function also runs
+  // automatically whenever no vehicle is selected yet (see the entry point), and
+  // shouldn't force a redundant re-login just because vehicle picking hasn't happened.
+  if (!loadToken()) {
+    const a = new Alert();
+    a.title = "Sign in with Ford";
+    a.message =
+      "A sign-in window will open. Enter your Ford credentials there — this script never sees them, " +
+      "it only watches for the redirect once you're signed in.";
+    a.addAction("Continue");
+    a.addCancelAction("Cancel");
+    if ((await a.presentAlert()) === -1) return false;
 
-  const a = new Alert();
-  a.title = "Sign in with Ford";
-  a.message =
-    "A sign-in window will open. Enter your Ford credentials there — this script never sees them, " +
-    "it only watches for the redirect once you're signed in.";
-  a.addAction("Continue");
-  a.addCancelAction("Cancel");
-  if ((await a.presentAlert()) === -1) return false;
+    await interactiveSignIn(REGIONS[region]);
+  }
 
-  await interactiveSignIn(REGIONS[region]);
+  // Vehicle(s) are picked from the account's garage rather than typed in -- no VIN typos,
+  // and it's how multi-vehicle accounts add more than one.
+  await runVehicleManager();
+
+  if (!loadActiveVin()) {
+    const none = new Alert();
+    none.title = "No vehicle selected";
+    none.message = 'Run this script again and choose "Manage vehicles" from the menu whenever you\'re ready to add one.';
+    none.addAction("OK");
+    await none.presentAlert();
+    return true;
+  }
 
   const done = new Alert();
   done.title = "Connected";
@@ -533,16 +588,117 @@ async function runSetup() {
   return true;
 }
 
+// Add/remove vehicles from the account's garage, and pick which one is "active" (used
+// by the menu, and by any widget whose Parameter field doesn't name a specific vehicle
+// — see the vin token handling in parseWidgetParameter). Each row's own tap opens an
+// action Alert rather than mixing a row-level onSelect with an embedded button cell,
+// since that combination isn't used (or confirmed safe) anywhere else in this script.
+async function runVehicleManager() {
+  const region = loadRegion();
+  if (!loadToken()) {
+    const a = new Alert();
+    a.title = "Not signed in";
+    a.message = "Sign in to FordPass first.";
+    a.addAction("OK");
+    await a.presentAlert();
+    return;
+  }
+
+  const token = await getValidToken(REGIONS[region]);
+  const garage = await fetchGarage(token, REGIONS[region]);
+
+  const table = new UITable();
+  table.showSeparators = true;
+
+  function render() {
+    table.removeAllRows();
+    const stored = loadVehicles();
+    const activeVin = loadActiveVin();
+
+    const header = new UITableRow();
+    header.isHeader = true;
+    header.addText("Tap a vehicle to set it active or remove it.");
+    table.addRow(header);
+
+    for (const v of stored) {
+      const row = new UITableRow();
+      row.dismissOnSelect = false;
+      row.addText((v.vin === activeVin ? "●  " : "○  ") + v.label, v.vin);
+      row.onSelect = async () => {
+        const a = new Alert();
+        a.title = v.label;
+        a.message = v.vin;
+        a.addAction("Set as active");
+        a.addAction("Remove");
+        a.addCancelAction("Cancel");
+        const choice = await a.presentAlert();
+        if (choice === 0) {
+          saveActiveVin(v.vin);
+        } else if (choice === 1) {
+          const updated = loadVehicles().filter((x) => x.vin !== v.vin);
+          saveVehicles(updated);
+          if (loadActiveVin() === v.vin && updated.length) saveActiveVin(updated[0].vin);
+        } else {
+          return;
+        }
+        render();
+      };
+      table.addRow(row);
+    }
+
+    if (garage) {
+      const storedVins = new Set(stored.map((v) => v.vin));
+      const addable = garage.filter((g) => !storedVins.has(g.vin));
+      if (addable.length) {
+        const addHeader = new UITableRow();
+        addHeader.isHeader = true;
+        addHeader.addText("Add from your account");
+        table.addRow(addHeader);
+
+        for (const gv of addable) {
+          const label = vehicleLabelFromGarage(gv, gv.vin);
+          const row = new UITableRow();
+          row.dismissOnSelect = false;
+          row.addText(`+  ${label}`, gv.vin);
+          row.onSelect = () => {
+            saveVehicles([...loadVehicles(), { vin: gv.vin, label }]);
+            if (!loadActiveVin()) saveActiveVin(gv.vin);
+            render();
+          };
+          table.addRow(row);
+        }
+      } else if (stored.length) {
+        const allAdded = new UITableRow();
+        allAdded.addText("All vehicles on your account are already added.");
+        table.addRow(allAdded);
+      }
+    } else {
+      const errRow = new UITableRow();
+      errRow.addText("Couldn't load your account's vehicle list right now — check your connection and reopen this menu to try again.");
+      table.addRow(errRow);
+    }
+
+    table.reload();
+  }
+
+  render();
+  await table.present(false);
+}
+
 // ===================== interactive menu =====================
 
 async function runMenu() {
   const vin = loadVin();
   const region = loadRegion();
   const regionCfg = REGIONS[region];
+  const vehicles = loadVehicles();
+  const activeLabel = vin ? (vehicles.find((v) => v.vin === vin) || {}).label || vin : null;
 
   const menu = new Alert();
   menu.title = "FordPass";
-  menu.message = vin ? `VIN: ${vin}  ·  Region: ${region}` : "Not set up yet.";
+  menu.message = vin
+    ? `${activeLabel}  ·  Region: ${region}${vehicles.length > 1 ? ` (${vehicles.length} vehicles)` : ""}`
+    : "Not set up yet.";
   menu.addAction("Refresh status");
   menu.addAction("Lock");
   menu.addAction("Unlock");
@@ -550,7 +706,8 @@ async function runMenu() {
   menu.addAction("Cancel remote start");
   menu.addAction("Request fresh report");
   menu.addAction("Configure widget (tiles & units)");
-  menu.addAction("Re-run setup / change VIN or region");
+  menu.addAction("Manage vehicles");
+  menu.addAction("Re-run setup / change region");
   menu.addAction("Export token (debug)");
   menu.addAction(`"Go Home" after widget commands: ${loadGoHomeEnabled() ? "On" : "Off"} (tap to toggle)`);
   menu.addCancelAction("Close");
@@ -577,15 +734,17 @@ async function runMenu() {
     } else if (choice === 6) {
       await runTileConfigurator();
     } else if (choice === 7) {
-      await runSetup();
+      await runVehicleManager();
     } else if (choice === 8) {
+      await runSetup();
+    } else if (choice === 9) {
       const token = loadToken();
       const a = new Alert();
       if (!token) {
         a.title = "Not signed in";
         a.message = "No stored FordPass token yet.";
       } else {
-        Pasteboard.copyString(JSON.stringify({ vin, region, token }, null, 2));
+        Pasteboard.copyString(JSON.stringify({ vin, region, vehicles, token }, null, 2));
         a.title = "Copied (debug)";
         a.message =
           "VIN + region + the full stored token are on your clipboard. This is a " +
@@ -595,7 +754,7 @@ async function runMenu() {
       }
       a.addAction("OK");
       await a.presentAlert();
-    } else if (choice === 9) {
+    } else if (choice === 10) {
       const enabling = !loadGoHomeEnabled();
       const a = new Alert();
       if (enabling) {
@@ -974,7 +1133,10 @@ function renderLocation(widget, status, mapProvider) {
 // actually sends (see runCommandFromWidget), so a stray tap can only open a dialog the
 // user dismisses, not fire a real command. Medium/large widgets only, same reason as
 // everywhere else this session — small widgets' only tap target is the whole widget.
-function addCommandButton(row, cmdKey) {
+// vin is embedded in the URL (not just cmd) so the command acts on whichever vehicle
+// *this* widget is showing, even if it's not the account's active one -- the relaunched
+// script has no other way to know which widget's button was tapped.
+function addCommandButton(row, cmdKey, vin) {
   const def = WRITE_COMMANDS[cmdKey];
   const btn = row.addStack();
   btn.layoutVertically();
@@ -983,13 +1145,13 @@ function addCommandButton(row, cmdKey) {
   btn.cornerRadius = 8;
   btn.backgroundColor = Color.dynamic(new Color("#eef1f6"), new Color("#242831"));
   if (config.widgetFamily !== "small") {
-    btn.url = `scriptable:///run/${encodeURIComponent(Script.name())}?cmd=${cmdKey}`;
+    btn.url = `scriptable:///run/${encodeURIComponent(Script.name())}?cmd=${cmdKey}&vin=${encodeURIComponent(vin)}`;
   }
   const t = btn.addText(def.label.toUpperCase());
   t.font = Font.boldSystemFont(11);
 }
 
-function renderCommands(widget) {
+function renderCommands(widget, vin) {
   const title = widget.addText("COMMANDS");
   title.font = Font.systemFont(10);
   title.textColor = Color.gray();
@@ -1002,7 +1164,7 @@ function renderCommands(widget) {
     row.layoutHorizontally();
     const rowKeys = keys.slice(i, i + 3);
     rowKeys.forEach((key, idx) => {
-      addCommandButton(row, key);
+      addCommandButton(row, key, vin);
       if (idx < rowKeys.length - 1) row.addSpacer(8);
     });
   }
@@ -1020,11 +1182,14 @@ function renderCommands(widget) {
 // deliberately doesn't let any third-party app (Scriptable included) do that itself.
 const GO_HOME_SHORTCUT_NAME = "Go Home";
 
-async function runCommandFromWidget(cmdKey) {
+// vinOverride comes from the tapped button's own URL (addCommandButton embeds it) so
+// the command acts on whichever vehicle that specific widget was showing, not whatever
+// happens to be the account's current "active" vehicle.
+async function runCommandFromWidget(cmdKey, vinOverride) {
   const def = WRITE_COMMANDS[cmdKey];
   if (!def) return;
 
-  const vin = loadVin();
+  const vin = vinOverride || loadVin();
   const region = loadRegion();
   if (!vin || !loadToken()) return;
 
@@ -1075,9 +1240,14 @@ async function runCommandFromWidget(cmdKey) {
 // Ported from ha-fordpass's current approach, not tonesto7/fordpass-scriptable's (a
 // thumbnail URL built from VIN+year+country, against an endpoint that's now dead —
 // see commit history). Confirmed working live for the image this session.
-async function fetchGarageVehicle(token, vin, regionCfg) {
+// All vehicles on the account, cached together (one fetch serves every vehicle lookup,
+// not one cache file per VIN). Cache is intentionally short-lived (not re-checked within
+// a single script run beyond this) since it's keyed off FileManager's cache directory,
+// which "the OS may delete at any time" per Scriptable's docs — fine for this, since a
+// stale vehicle list just means re-fetching, not wrong data shown anywhere lasting.
+async function fetchGarage(token, regionCfg) {
   const fm = FileManager.local();
-  const cachePath = fm.joinPath(fm.cacheDirectory(), `fordconnect_garage_${vin}.json`);
+  const cachePath = fm.joinPath(fm.cacheDirectory(), "fordconnect_garage_all.json");
   if (fm.fileExists(cachePath)) {
     try {
       return JSON.parse(fm.readString(cachePath));
@@ -1101,11 +1271,26 @@ async function fetchGarageVehicle(token, vin, regionCfg) {
     return null;
   }
   if (!Array.isArray(garage)) return null;
-  const vehicle = garage.find((v) => v.vin === vin);
-  if (!vehicle) return null;
 
-  fm.writeString(cachePath, JSON.stringify(vehicle));
-  return vehicle;
+  fm.writeString(cachePath, JSON.stringify(garage));
+  return garage;
+}
+
+async function fetchGarageVehicle(token, vin, regionCfg) {
+  const garage = await fetchGarage(token, regionCfg);
+  return (garage && garage.find((v) => v.vin === vin)) || null;
+}
+
+// "2021 Ford F-150" style label from the garage profile, falling back to a locally
+// stored label (e.g. from before the garage was reachable), then the bare VIN.
+function vehicleLabelFromGarage(garageVehicle, vin) {
+  if (garageVehicle && garageVehicle.profile) {
+    const p = garageVehicle.profile;
+    const parts = [p.year, p.make, p.model].filter(Boolean);
+    if (parts.length) return parts.join(" ");
+  }
+  const stored = loadVehicles().find((v) => v.vin === vin);
+  return (stored && stored.label) || vin;
 }
 
 async function fetchVehicleImage(token, vin, regionCfg) {
@@ -1194,7 +1379,7 @@ const TILE_DEFS = {
   },
   temp: {
     label: () => "OUTSIDE",
-    value: (status, units) => formatTempC(metricValue(status, "outsideTemp"), units),
+    value: (status, units) => formatTempC(metricValue(status, "outsideTemperature"), units),
   },
   oil: {
     label: () => "OIL LIFE",
@@ -1270,7 +1455,7 @@ const BLOCK_DEFS = {
   },
   commands: {
     label: () => "COMMANDS (LOCK/UNLOCK/START/STOP)",
-    render: async (widget) => renderCommands(widget),
+    render: async (widget, status, vin) => renderCommands(widget, vin),
   },
 };
 
@@ -1295,15 +1480,18 @@ function parseWidgetParameter(paramStr) {
   let units = null;
   let titleMode = null;
   let mapProvider = null;
+  let vin = null;
   const items = [];
+  const vehicleVinsByLower = Object.fromEntries(loadVehicles().map((v) => [v.vin.toLowerCase(), v.vin]));
   for (const t of tokens) {
     if (t === "imperial" || t === "metric") units = t;
     else if (t === "notitle") titleMode = "hidden";
     else if (t === "applemaps") mapProvider = "apple";
     else if (t === "googlemaps") mapProvider = "google";
+    else if (vehicleVinsByLower[t]) vin = vehicleVinsByLower[t];
     else if (ITEM_KEYS_BY_LOWER[t]) items.push(ITEM_KEYS_BY_LOWER[t]);
   }
-  return { units, titleMode, mapProvider, items: items.length ? items : null };
+  return { units, titleMode, mapProvider, vin, items: items.length ? items : null };
 }
 
 // Interactive picker (run the script, not from a widget) so the Parameter mini-language
@@ -1316,6 +1504,8 @@ async function runTileConfigurator() {
   let units = loadUnits();
   let titleMode = loadTitleMode();
   let mapProvider = loadMapProvider();
+  let selectedVehicleVin = loadActiveVin();
+  const vehicles = loadVehicles();
   const TITLE_MODE_LABELS = { fordpass: '"FordPass"', hidden: "hidden" };
   const TITLE_MODE_CYCLE = ["fordpass", "hidden"];
   const MAP_PROVIDER_LABELS = { apple: "Apple Maps", google: "Google Maps" };
@@ -1363,6 +1553,19 @@ async function runTileConfigurator() {
     };
     table.addRow(mapRow);
 
+    if (vehicles.length > 1) {
+      const vehicleRow = new UITableRow();
+      vehicleRow.dismissOnSelect = false;
+      const current = vehicles.find((v) => v.vin === selectedVehicleVin);
+      vehicleRow.addText("Vehicle (for Copy below)", current ? current.label : "Account default");
+      vehicleRow.onSelect = () => {
+        const idx = vehicles.findIndex((v) => v.vin === selectedVehicleVin);
+        selectedVehicleVin = vehicles[(idx + 1) % vehicles.length].vin;
+        render();
+      };
+      table.addRow(vehicleRow);
+    }
+
     for (const key of orderedItemKeys) {
       const row = new UITableRow();
       row.dismissOnSelect = false;
@@ -1397,7 +1600,8 @@ async function runTileConfigurator() {
     copyBtn.onTap = async () => {
       const titleToken = titleMode === "hidden" ? "notitle" : null;
       const mapToken = mapProvider === "google" ? "googlemaps" : null;
-      const paramStr = [...selectedInOrder(), units, titleToken, mapToken].filter(Boolean).join(",");
+      const vehicleToken = vehicles.length > 1 && selectedVehicleVin !== loadActiveVin() ? selectedVehicleVin : null;
+      const paramStr = [...selectedInOrder(), units, titleToken, mapToken, vehicleToken].filter(Boolean).join(",");
       Pasteboard.copyString(paramStr);
       const a = new Alert();
       a.title = "Copied";
@@ -1417,7 +1621,8 @@ async function buildWidget() {
   const widget = new ListWidget();
   widget.backgroundColor = Color.dynamic(new Color("#ffffff"), new Color("#1c1f26"));
 
-  const vin = loadVin();
+  const paramCfg = parseWidgetParameter(args.widgetParameter);
+  const vin = paramCfg.vin || loadVin();
   const region = loadRegion();
 
   if (!vin || !loadToken()) {
@@ -1426,7 +1631,6 @@ async function buildWidget() {
     return widget;
   }
 
-  const paramCfg = parseWidgetParameter(args.widgetParameter);
   const units = paramCfg.units || loadUnits();
   const titleMode = paramCfg.titleMode || loadTitleMode();
   const mapProvider = paramCfg.mapProvider || loadMapProvider();
@@ -1500,7 +1704,7 @@ if (config.runsInWidget) {
   Script.setWidget(widget);
   Script.complete();
 } else if (args.queryParameters && args.queryParameters.cmd) {
-  await runCommandFromWidget(args.queryParameters.cmd);
+  await runCommandFromWidget(args.queryParameters.cmd, args.queryParameters.vin);
 } else if (!loadVin() || !loadToken()) {
   await runSetup();
 } else {
