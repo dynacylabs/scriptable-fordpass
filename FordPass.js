@@ -22,6 +22,7 @@ const CLIENT_ID = "09852200-05fd-41f6-8c21-d36d3497dc64";
 const OAUTH_ID = "4566605f-43a7-400a-946e-89cc9fdb0bd7";
 
 const FORD_FOUNDATIONAL_API = "https://api.foundational.ford.com/api";
+const FORD_VEHICLE_API = "https://api.vehicle.ford.com/api";
 const AUTONOMIC_URL = "https://api.autonomic.ai/v1";
 const AUTONOMIC_ACCOUNT_URL = "https://accounts.autonomic.ai/v1";
 
@@ -647,6 +648,72 @@ function renderDoorsVerbose(widget, status, region) {
   }
 }
 
+// ===================== vehicle image =====================
+//
+// Unlike tonesto7/fordpass-scriptable's approach (a thumbnail URL built from
+// VIN+year+country, against an endpoint that's now dead — see commit history),
+// this ports ha-fordpass's current approach instead: Ford's own FordPass-private
+// garage endpoint returns a ready-made image URL per vehicle, and fetching it needs
+// no new auth — just our existing access_token, via a custom "auth-token" header
+// (not "Authorization: Bearer") alongside Application-Id. Not yet verified against a
+// live account this session (no cached token) — worth confirming once reconnected.
+async function fetchVehicleImage(token, vin, regionCfg) {
+  const fm = FileManager.local();
+  const cachePath = fm.joinPath(fm.cacheDirectory(), `fordconnect_vehicle_${vin}.png`);
+  if (fm.fileExists(cachePath)) {
+    try {
+      return fm.readImage(cachePath);
+    } catch (e) {
+      // fall through and re-fetch
+    }
+  }
+
+  const garageHeaders = {
+    ...API_HEADERS,
+    "auth-token": token.access_token,
+    "Application-Id": regionCfg.app_id,
+    countryCode: regionCfg.countrycode,
+    locale: regionCfg.locale,
+  };
+  const garageReq = new Request(`${FORD_VEHICLE_API}/fpcpl-user-garage-service/v1/user/garage`);
+  garageReq.headers = garageHeaders;
+  let garage;
+  try {
+    garage = await garageReq.loadJSON();
+  } catch (e) {
+    return null;
+  }
+  if (!Array.isArray(garage)) return null;
+  const vehicle = garage.find((v) => v.vin === vin);
+  const imageUrl = vehicle && vehicle.profile && vehicle.profile.vehicleImage;
+  if (!imageUrl) return null;
+
+  const imgReq = new Request(imageUrl);
+  imgReq.headers = { ...API_HEADERS, "auth-token": token.access_token, "Application-Id": regionCfg.app_id };
+  imgReq.timeoutInterval = 15;
+  try {
+    const img = await imgReq.loadImage();
+    if (imgReq.response.statusCode === 200) {
+      fm.writeImage(cachePath, img);
+      return img;
+    }
+  } catch (e) {
+    // No bundled placeholder — the image block is just skipped on failure.
+  }
+  return null;
+}
+
+async function renderVehicleImage(widget, vin, regionCfg) {
+  const token = await getValidToken(regionCfg);
+  const img = await fetchVehicleImage(token, vin, regionCfg);
+  if (!img) return;
+  const wi = widget.addImage(img);
+  wi.imageSize = new Size(300, 90);
+  wi.applyFittingContentMode();
+  wi.centerAlignImage();
+  widget.addSpacer(6);
+}
+
 // Each tile is keyed by the token a widget's Parameter field uses to request it (see
 // parseWidgetParameter). label/value may depend on units and whether the vehicle is
 // an EV (fuelLevel vs. xevBatteryStateOfCharge, oil life vs. 12V battery).
@@ -672,31 +739,29 @@ const TILE_DEFS = {
     label: () => "OUTSIDE",
     value: (status, units) => formatTempC(metricValue(status, "outsideTemp"), units),
   },
-  oil12v: {
-    label: (isEv) => (isEv ? "12V BATT" : "OIL LIFE"),
-    value: (status, units, isEv) =>
-      isEv
-        ? formatPercent(metricValue(status, "batteryStateOfCharge"))
-        : formatPercent(metricValue(status, "oilLifeRemaining")) ?? formatPercent(metricValue(status, "batteryStateOfCharge")),
+  oil: {
+    label: () => "OIL LIFE",
+    value: (status) => formatPercent(metricValue(status, "oilLifeRemaining")),
+  },
+  battery12v: {
+    label: () => "12V BATT",
+    value: (status) => formatPercent(metricValue(status, "batteryStateOfCharge")),
   },
 };
 
 const DEFAULT_TILES_SMALL = ["doors", "fuel"];
-const DEFAULT_TILES_FULL = ["doors", "fuel", "range", "odometer", "temp", "oil12v"];
+const DEFAULT_TILES_FULL = ["doors", "fuel", "range", "odometer", "temp", "oil", "battery12v"];
 const TILES_PER_ROW = 3;
 
 // Full-width elements — unlike TILE_DEFS entries, these render themselves (not as a
 // 1/3-width grid cell), so they get their own row whenever they appear in the
 // selected item list. "doors" (collapsed, the single-line version) stays in
 // TILE_DEFS; "doorsVerbose" is the per-door table alternative.
-//
-// A vehicle-image block was attempted and pulled: the unauthenticated thumbnail
-// endpoint tonesto7/fordpass-scriptable's own code uses no longer resolves
-// (www.digitalservices.ford.com is dead — confirmed via DNS), and the endpoint that
-// replaced it (api.mps.ford.com/api/imageservice/data) now requires a bearer token
-// that nothing in that reference project actually obtains either (its own
-// "fpPubToken" setting is read in several places but never written anywhere).
 const BLOCK_DEFS = {
+  image: {
+    label: () => "VEHICLE IMAGE",
+    render: async (widget, status, vin, region) => renderVehicleImage(widget, vin, REGIONS[region]),
+  },
   doorsVerbose: {
     label: () => "DOORS (VERBOSE)",
     render: async (widget, status, vin, region) => renderDoorsVerbose(widget, status, region),

@@ -60,10 +60,10 @@ widget (see below), or re-run setup (to change your VIN/region or sign in again)
 ## Configuring a widget
 
 Each widget instance can show a different set of tiles, via its Parameter field (long-press the
-widget → Edit Widget → Parameter) — a comma-separated list of tile names (`doors`, `fuel`,
-`range`, `odometer`, `temp`, `oil12v`) plus an optional `imperial`/`metric` override, e.g.
-`doors,fuel,odometer,metric`. See the full explanation and defaults in the next section — but
-you don't have to type this by hand:
+widget → Edit Widget → Parameter) — a comma-separated list of item names (`doors`, `fuel`,
+`range`, `odometer`, `temp`, `oil`, `battery12v`, `doorsVerbose`, `image`) plus an optional
+`imperial`/`metric` override, e.g. `doors,fuel,odometer,metric`. See the full explanation and
+defaults in the next section — but you don't have to type this by hand:
 
 Run the script (tap it, don't just view the widget) → **Configure widget (tiles & units)**
 opens a checklist: tap a row to toggle that tile on/off, tap Units to flip imperial/metric, then
@@ -80,12 +80,13 @@ either:
 A widget's Parameter field is a single text field, used as a comma-separated list mixing two
 kinds of tokens — order doesn't matter except for item order:
 
-- Item names, in the order you want them shown: `doors` (collapsed, one line), `fuel` (fuel
-  level or EV charge %), `range`, `odometer`, `temp` (outside temp), `oil12v` (oil life, or
-  12V battery for EVs) — each of these takes a third of a row, 3 to a row. `doorsVerbose` is a
-  full-width alternative to `doors`: a 2×2 table (front driver/passenger side correctly placed
-  per your region's driving side, rear left/right, plus a tailgate row if present), always on
-  its own row.
+- Tile names (each takes a third of a row, 3 to a row), in the order you want them shown:
+  `doors` (collapsed, one line), `fuel` (fuel level or EV charge %), `range`, `odometer`,
+  `temp` (outside temp), `oil` (oil life, ICE only), `battery12v` (12V battery).
+- Full-width block names, each always on its own row: `doorsVerbose` — an alternative to
+  `doors`, a 2×2 table (front driver/passenger side correctly placed per your region's driving
+  side, rear left/right, plus a tailgate row if present). `image` — the vehicle's photo, as
+  shown in the real FordPass app.
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
   preference (see Units below).
 
@@ -118,9 +119,14 @@ cross-checked against this script's own live output — if any of those tiles co
 the in-script menu's "Refresh status" (which opens the full raw JSON via QuickLook) to find the
 right key and adjust the `metricValue(...)` calls in `buildWidget()`.
 
-A vehicle-image tile (the branded thumbnail the real FordPass app shows) was investigated and
-dropped for now: the unauthenticated endpoint `tonesto7/fordpass-scriptable` uses for this is
-dead (`www.digitalservices.ford.com` no longer resolves), and its apparent replacement
-(`api.mps.ford.com/api/imageservice/data`) now requires a bearer token that nothing in that
-reference project actually obtains either — worth revisiting if a working token source turns
-up, but not a quick port.
+The `image` block (vehicle photo) is unverified against a live account — no cached token this
+session to test with. Its approach is ported from `ha-fordpass` rather than
+`tonesto7/fordpass-scriptable`: that project's thumbnail endpoint
+(`www.digitalservices.ford.com`) no longer resolves at all (confirmed dead via DNS), so instead
+this calls Ford's FordPass-private garage endpoint
+(`api.vehicle.ford.com/api/fpcpl-user-garage-service/v1/user/garage`) to read a ready-made
+`profile.vehicleImage` URL per vehicle, authenticated with the same `access_token` everything
+else here already uses (via a custom `auth-token` header, not `Authorization: Bearer`) — no new
+auth flow needed. Worth confirming once reconnected; if it comes up blank, "Refresh status" +
+QuickLook only shows telemetry, not the garage response, so check `fetchVehicleImage()`
+directly (e.g. temporarily `console.log` the garage JSON).
