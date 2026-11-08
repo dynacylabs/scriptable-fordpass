@@ -761,6 +761,88 @@ function renderTiresVerbose(widget, status, units) {
   addTireCell(row2, rr);
 }
 
+// ===================== window position =====================
+//
+// Confirmed live: raw key is "windowStatus" (not "windowPosition" — that's just the
+// ha-fordpass-assigned display key), and each entry's value is a doubleRange
+// (lowerBound/upperBound), not a status string — both 0.0 means closed, anything else
+// means open (exact magnitude/meaning beyond that isn't exposed, so like ha-fordpass
+// this treats it as binary open/closed rather than guessing a percentage). This
+// vehicle only reports front windows (UNSPECIFIED_FRONT + driver/passenger role, same
+// shape as front doors) — no rear entries at all, so the rear grid cells will show "—"
+// here; REAR_LEFT/REAR_RIGHT is a best guess at how a vehicle that does report rear
+// windows would name them, mirroring doors, unconfirmed.
+function windowIsOpen(value) {
+  if (!value || !value.doubleRange) return null;
+  const { lowerBound, upperBound } = value.doubleRange;
+  return (lowerBound || 0) !== 0 || (upperBound || 0) !== 0;
+}
+
+function windowLabel(value) {
+  const open = windowIsOpen(value);
+  return open == null ? null : open ? "OPEN" : "CLOSED";
+}
+
+function buildWindowGrid(status, region) {
+  const windows = metricArray(status, "windowStatus");
+  const driverIsLeft = !RHD_REGIONS.has(region);
+
+  const front = (role) => {
+    const entry = windows.find((w) => w.vehicleWindow === "UNSPECIFIED_FRONT" && w.vehicleOccupantRole === role);
+    return { label: role, value: entry ? windowLabel(entry.value) : null };
+  };
+  const rear = (side) => {
+    const entry = windows.find((w) => w.vehicleWindow === `REAR_${side}`);
+    return { label: `REAR ${side}`, value: entry ? windowLabel(entry.value) : null };
+  };
+
+  return {
+    front: { left: front(driverIsLeft ? "DRIVER" : "PASSENGER"), right: front(driverIsLeft ? "PASSENGER" : "DRIVER") },
+    rear: { left: rear("LEFT"), right: rear("RIGHT") },
+  };
+}
+
+function windowSummaryText(status) {
+  const windows = metricArray(status, "windowStatus");
+  if (windows.length === 0) return null;
+  const openCount = windows.filter((w) => windowIsOpen(w.value)).length;
+  if (openCount === 0) return "CLOSED";
+  return openCount === windows.length ? "OPEN" : `${openCount} OPEN`;
+}
+
+function addWindowCell(stack, label, value) {
+  const col = stack.addStack();
+  col.layoutVertically();
+  const l = col.addText(label);
+  l.font = Font.systemFont(9);
+  l.textColor = Color.gray();
+  const v = col.addText(value || "—");
+  v.font = Font.boldSystemFont(12);
+  if (value === "OPEN") v.textColor = Color.orange();
+}
+
+function renderWindowsVerbose(widget, status, region) {
+  const grid = buildWindowGrid(status, region);
+
+  const title = widget.addText("WINDOWS");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(3);
+
+  const row1 = widget.addStack();
+  row1.layoutHorizontally();
+  addWindowCell(row1, grid.front.left.label, grid.front.left.value);
+  row1.addSpacer(16);
+  addWindowCell(row1, grid.front.right.label, grid.front.right.value);
+
+  widget.addSpacer(6);
+  const row2 = widget.addStack();
+  row2.layoutHorizontally();
+  addWindowCell(row2, grid.rear.left.label, grid.rear.left.value);
+  row2.addSpacer(16);
+  addWindowCell(row2, grid.rear.right.label, grid.rear.right.value);
+}
+
 // ===================== vehicle garage data (image) =====================
 //
 // Ford's FordPass-private garage endpoint returns a per-vehicle object including a
@@ -891,6 +973,10 @@ const TILE_DEFS = {
     label: () => "TIRES",
     value: (status) => tireSummaryText(status),
   },
+  windows: {
+    label: () => "WINDOWS",
+    value: (status) => windowSummaryText(status),
+  },
 };
 
 const DEFAULT_TILES_SMALL = ["doors", "fuel"];
@@ -913,6 +999,10 @@ const BLOCK_DEFS = {
   tiresVerbose: {
     label: () => "TIRES (VERBOSE)",
     render: async (widget, status, vin, region, units) => renderTiresVerbose(widget, status, units),
+  },
+  windowsVerbose: {
+    label: () => "WINDOWS (VERBOSE)",
+    render: async (widget, status, vin, region) => renderWindowsVerbose(widget, status, region),
   },
 };
 

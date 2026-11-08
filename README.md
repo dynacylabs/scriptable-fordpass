@@ -83,14 +83,17 @@ kinds of tokens — order doesn't matter except for item order:
 - Tile names (each takes a third of a row, 3 to a row), in the order you want them shown:
   `doors` (collapsed, one line), `fuel` (fuel level or EV charge %), `range`, `odometer`,
   `temp` (outside temp), `oil` (oil life, ICE only), `battery12v` (12V battery), `tires` — a
-  one-word summary ("OK", or e.g. "1 Low" / "2 issues") of Ford's own per-wheel verdict.
+  one-word summary ("OK", or e.g. "1 Low" / "2 issues") of Ford's own per-wheel verdict,
+  `windows` — "CLOSED", "OPEN", or e.g. "1 OPEN" if some but not all are open.
 - Full-width block names, each always on its own row: `doorsVerbose` — an alternative to
   `doors`, a 2×2 table (front driver/passenger side correctly placed per your region's driving
   side, rear left/right, plus a tailgate row if present). `tiresVerbose` — an alternative to
   `tires`: all 4 wheel readings as a 2×2 grid laid out the way they'd sit on the actual vehicle
   (front pair on top, rear pair below — not overlaid on the `image` block, just arranged the
-  same way), pressure plus Ford's status word, in orange when not normal. `image` — the
-  vehicle's photo, as shown in the real FordPass app.
+  same way), pressure plus Ford's status word, in orange when not normal. `windowsVerbose` — an
+  alternative to `windows`, the same 2×2 layout as `doorsVerbose` (front driver/passenger per
+  region, rear left/right), each cell OPEN (orange) or CLOSED. `image` — the vehicle's photo,
+  as shown in the real FordPass app.
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
   preference (see Units below).
 - `notitle`, to hide the "FordPass" header entirely and reclaim that space.
@@ -117,14 +120,21 @@ conversion applies to those.
 Ported and unit-tested for the crypto/protocol pieces (the vendored SHA-256 matches known test
 vectors, and the token-exchange/refresh calls mirror an earlier Python implementation that was
 verified live against Ford's real endpoints), and confirmed working end-to-end on a physical
-device for sign-in, the core doors/fuel/odometer tiles, and the `image` block. `doorsVerbose`'s
-and `tires`/`tiresVerbose`'s own logic were also confirmed correct by running them directly
-against real live telemetry — real values for every door and every wheel, including the exact
-`vehicleWheel` enum names (`FRONT_LEFT`/`FRONT_RIGHT`/`REAR_LEFT`/`REAR_RIGHT`) and that Ford
-computes its own per-wheel status verdict (confirmed value: "NORMAL"; other values like "LOW"
-are handled generically — anything not "NORMAL" counts as a problem) — so severity is Ford's
-own determination against the vehicle's placard spec, not a threshold this script invents. If
-`doorsVerbose` still appears to show nothing on a given widget, that's more likely the widget's
+device for sign-in, the core doors/fuel/odometer tiles, and the `image` block. `doorsVerbose`,
+`tires`/`tiresVerbose`, and `windows`/`windowsVerbose` were all confirmed correct by running
+their logic directly against real live telemetry (not just reasoned about): real values for
+every door and every wheel, including the exact `vehicleWheel` enum names
+(`FRONT_LEFT`/`FRONT_RIGHT`/`REAR_LEFT`/`REAR_RIGHT`) and that Ford computes its own per-wheel
+tire status verdict (confirmed value: "NORMAL"; other values like "LOW" are handled
+generically — anything not "NORMAL" counts as a problem, so severity is Ford's own
+determination against the vehicle's placard spec, not a threshold this script invents); and for
+windows, that the raw metric key is actually `windowStatus` (not `windowPosition`, which is
+only `ha-fordpass`'s display name for it) and each entry's value is a numeric
+`doubleRange`, not a status string — both bounds `0.0` means closed, anything else means open,
+treated as binary rather than a percentage since nothing confirms finer meaning. This vehicle
+only ever reports front windows; `REAR_LEFT`/`REAR_RIGHT` naming for a vehicle that does report
+rear windows is an unconfirmed guess mirroring the (confirmed) door naming. If `doorsVerbose` or
+`windowsVerbose` still appear to show nothing on a given widget, that's more likely the widget's
 fixed, non-scrolling canvas clipping content than a logic bug; try it with fewer other items in
 the same widget first.
 
