@@ -98,7 +98,10 @@ kinds of tokens — order doesn't matter except for item order:
   alternative to `windows`, the same 2×2 layout as `doorsVerbose` (front driver/passenger per
   region, rear left/right), each cell OPEN (orange) or CLOSED. `healthVerbose` — an alternative
   to `health`: "No active alerts", or the full list of currently-active warning lights by name,
-  in orange. `image` — the vehicle's photo, as shown in the real FordPass app.
+  in orange. `location` — last known coordinates plus compass direction, tappable to open Apple
+  Maps on medium/large widgets (small widgets show it as plain text — their only tap target is
+  the whole widget, which already opens this script's menu). `image` — the vehicle's photo, as
+  shown in the real FordPass app.
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
   preference (see Units below).
 - `notitle`, to hide the "FordPass" header entirely and reclaim that space.
@@ -163,6 +166,14 @@ summary/list logic directly against the real data plus two simulated active faul
 (`lowEngineOilPressure`, `tirePressureMonitorSystemWarning`) before shipping, same as the other
 features here — correct pluralization and camelCase→Title Case humanization confirmed, not just
 reasoned about.
+
+`panicAlarm` displays as "—" rather than the literal word "UNDEFINED" when there's no panic
+event — that's Ford's own real raw value for the no-event case (confirmed live), not a bug;
+just not worth showing verbatim.
+
+`location` is confirmed live too: `metrics.position.value.location` is `{lat, lon, alt}`, plus a
+bonus `metrics.compassDirection.value` (e.g. "SOUTHWEST"). Verified the coordinate formatting
+and the generated Apple Maps URL directly against real data before shipping.
 
 The raw metric key names used for range, outside temp, oil life, and 12V battery come from
 [ha-fordpass](https://github.com/marq24/ha-fordpass)'s own field mapping, not yet cross-checked

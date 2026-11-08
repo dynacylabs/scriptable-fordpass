@@ -887,6 +887,32 @@ function renderHealthAlertsVerbose(widget, status) {
   }
 }
 
+// ===================== location =====================
+//
+// Confirmed live: "metrics.position.value.location" is {lat, lon, alt}, plus a bonus
+// "metrics.compassDirection.value" (e.g. "SOUTHWEST"). WidgetText.url (tap to open) is
+// only supported on medium/large widgets per Scriptable's docs — a small widget's only
+// tap target is the whole widget itself, which already opens this script's menu, so
+// this just renders as plain (non-tappable) text there instead of fighting that.
+function renderLocation(widget, status) {
+  const loc = metric(status, "position.value.location");
+  if (!loc || loc.lat == null || loc.lon == null) return;
+
+  const title = widget.addText("LOCATION");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(3);
+
+  const direction = metricValue(status, "compassDirection");
+  const coords = `${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)}`;
+  const text = widget.addText(direction ? `${coords} (${direction.toLowerCase()})` : coords);
+  text.font = Font.boldSystemFont(12);
+  if (config.widgetFamily !== "small") {
+    text.url = `https://maps.apple.com/?ll=${loc.lat},${loc.lon}&q=Vehicle`;
+    text.textColor = Color.blue();
+  }
+}
+
 // ===================== vehicle garage data (image) =====================
 //
 // Ford's FordPass-private garage endpoint returns a per-vehicle object including a
@@ -1027,7 +1053,12 @@ const TILE_DEFS = {
   },
   panicAlarm: {
     label: () => "PANIC ALARM",
-    value: (status) => metricValue(status, "panicAlarmStatus"),
+    // Ford's own raw value for "no panic event" is literally the string "UNDEFINED" —
+    // real data, not a bug, but not worth showing verbatim; treat it like no-data.
+    value: (status) => {
+      const v = metricValue(status, "panicAlarmStatus");
+      return v === "UNDEFINED" ? null : v;
+    },
   },
   ignition: {
     label: () => "IGNITION",
@@ -1067,6 +1098,10 @@ const BLOCK_DEFS = {
   healthVerbose: {
     label: () => "VEHICLE HEALTH (VERBOSE)",
     render: async (widget, status) => renderHealthAlertsVerbose(widget, status),
+  },
+  location: {
+    label: () => "LOCATION",
+    render: async (widget, status) => renderLocation(widget, status),
   },
 };
 
