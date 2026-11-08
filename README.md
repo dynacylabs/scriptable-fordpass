@@ -57,6 +57,23 @@ Running the script again later (instead of just viewing the widget) opens a menu
 status, lock, unlock, remote start, cancel remote start, request a fresh report, configure the
 widget (see below), or re-run setup (to change your VIN/region or sign in again).
 
+## Write commands
+
+Every command Ford's API supports: lock, unlock, remote start, cancel remote start, request a
+fresh report. Two ways to send one:
+
+- **In-script menu** (always available) — run the script, pick the command. Opening the script
+  is itself a deliberate action, which is as close to a confirmation step as this already had.
+- **`commands` widget block** (medium/large widgets, opt-in via the configurator or Parameter
+  field) — Lock/Unlock/Start/Stop/Refresh buttons directly on the widget. Tapping one still has
+  to open the app (the same `WidgetStack.url` mechanism as `location`, and the same limitation
+  tap-to-detail ran into — there's no way around that in Scriptable), but nothing sends until you
+  confirm in a dialog that appears right after. A stray tap on the home screen opens that dialog
+  and stops there; it can't fire a command by itself.
+
+Commands are fire-and-forget — Ford confirms receipt, not that the vehicle executed it. Re-check
+the dashboard (or `fuel`/`tires`/etc.) a few seconds later to see it take effect.
+
 ## Configuring a widget
 
 Each widget instance can show a different set of tiles, via its Parameter field (long-press the
@@ -101,8 +118,10 @@ kinds of tokens — order doesn't matter except for item order:
   to `health`: "No active alerts", or the full list of currently-active warning lights by name,
   in orange. `location` — last known coordinates plus compass direction, tappable to open Apple
   Maps on medium/large widgets (small widgets show it as plain text — their only tap target is
-  the whole widget, which already opens this script's menu). `image` — the vehicle's photo, as
-  shown in the real FordPass app.
+  the whole widget, which already opens this script's menu). `commands` — Lock/Unlock/Start/Stop/
+  Refresh buttons, medium/large widgets only; tapping one opens the app to a confirm/cancel
+  dialog before anything actually sends, so a stray tap can't fire a real command (see Write
+  commands below). `image` — the vehicle's photo, as shown in the real FordPass app.
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
   preference (see Units below).
 - `notitle`, to hide the "FordPass" header entirely and reclaim that space.
@@ -193,3 +212,12 @@ extent of its tap support, can only open a URL, which for `scriptable:///` means
 the app) — a hard platform limitation, not something this script could route around. The
 always-visible verbose blocks (`doorsVerbose`, etc.) and the in-script menu's "Refresh status"
 remain the ways to get more detail.
+
+The `commands` widget block reuses the exact same `scriptable:///run/...` + `args.queryParameters`
+mechanism as that reverted tap-to-detail feature, so the same caveat applies: the underlying
+`sendCommand()` call is already proven live (used it directly against the real truck earlier
+this session — "Request Fresh Report command sent" actually worked), but the tap → app-opens →
+confirm-dialog → send round-trip specifically needs a real tap on a real device to confirm it
+behaves as documented. Unlike tap-to-detail, this one was kept rather than reverted on the same
+app-switch grounds, since sending a command is a deliberate action rather than passive viewing,
+and the added confirm step means a stray tap can only open a dialog, not fire anything.

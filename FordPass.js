@@ -929,6 +929,82 @@ function renderLocation(widget, status, mapProvider) {
   }
 }
 
+// ===================== write commands (widget buttons) =====================
+//
+// Same WidgetStack.url mechanism as location/the (reverted) tap-to-detail — tapping a
+// button opens scriptable:///run/<script>?cmd=<key>, which launches the script outside
+// the widget. Unlike tap-to-detail, a confirm/cancel Alert runs before the command
+// actually sends (see runCommandFromWidget), so a stray tap can only open a dialog the
+// user dismisses, not fire a real command. Medium/large widgets only, same reason as
+// everywhere else this session — small widgets' only tap target is the whole widget.
+function addCommandButton(row, cmdKey) {
+  const def = WRITE_COMMANDS[cmdKey];
+  const btn = row.addStack();
+  btn.layoutVertically();
+  btn.centerAlignContent();
+  btn.setPadding(6, 10, 6, 10);
+  btn.cornerRadius = 8;
+  btn.backgroundColor = Color.dynamic(new Color("#eef1f6"), new Color("#242831"));
+  if (config.widgetFamily !== "small") {
+    btn.url = `scriptable:///run/${encodeURIComponent(Script.name())}?cmd=${cmdKey}`;
+  }
+  const t = btn.addText(def.label.toUpperCase());
+  t.font = Font.boldSystemFont(11);
+}
+
+function renderCommands(widget) {
+  const title = widget.addText("COMMANDS");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(4);
+
+  const keys = Object.keys(WRITE_COMMANDS);
+  for (let i = 0; i < keys.length; i += 3) {
+    if (i > 0) widget.addSpacer(6);
+    const row = widget.addStack();
+    row.layoutHorizontally();
+    const rowKeys = keys.slice(i, i + 3);
+    rowKeys.forEach((key, idx) => {
+      addCommandButton(row, key);
+      if (idx < rowKeys.length - 1) row.addSpacer(8);
+    });
+  }
+
+  if (config.widgetFamily === "small") {
+    const note = widget.addText("Open the app to use commands");
+    note.font = Font.systemFont(8);
+    note.textColor = Color.gray();
+  }
+}
+
+async function runCommandFromWidget(cmdKey) {
+  const def = WRITE_COMMANDS[cmdKey];
+  if (!def) return;
+
+  const vin = loadVin();
+  const region = loadRegion();
+  if (!vin || !loadToken()) return;
+
+  const confirm = new Alert();
+  confirm.title = "Confirm";
+  confirm.message = def.confirm;
+  confirm.addAction(def.label);
+  confirm.addCancelAction("Cancel");
+  if ((await confirm.presentAlert()) === -1) return;
+
+  const a = new Alert();
+  try {
+    await sendCommand(vin, REGIONS[region], def.apiType);
+    a.title = "Sent";
+    a.message = `${def.label} command sent — commands are fire-and-forget, check status again in a few seconds.`;
+  } catch (err) {
+    a.title = "Error";
+    a.message = String(err);
+  }
+  a.addAction("OK");
+  await a.presentAlert();
+}
+
 // ===================== vehicle garage data (image) =====================
 //
 // Ford's FordPass-private garage endpoint returns a per-vehicle object including a
@@ -1021,6 +1097,17 @@ async function renderVehicleImage(widget, vin, regionCfg) {
   wi.centerAlignImage();
   widget.addSpacer(6);
 }
+
+// Every write command Ford's API supports with no extra properties payload (confirmed
+// against ha-fordpass's KNOWN_COMMANDS). Shared by the in-script menu and the optional
+// "commands" widget block below, so both stay in sync with one definition.
+const WRITE_COMMANDS = {
+  lock: { label: "Lock", apiType: "lock", confirm: "Lock the truck?" },
+  unlock: { label: "Unlock", apiType: "unlock", confirm: "Unlock the truck?" },
+  remoteStart: { label: "Start", apiType: "remoteStart", confirm: "Start the engine remotely?" },
+  cancelRemoteStart: { label: "Stop", apiType: "cancelRemoteStart", confirm: "Cancel remote start?" },
+  statusRefresh: { label: "Refresh", apiType: "statusRefresh", confirm: "Request a fresh status report?" },
+};
 
 // Each tile is keyed by the token a widget's Parameter field uses to request it (see
 // parseWidgetParameter). label/value may depend on units and whether the vehicle is
@@ -1118,6 +1205,10 @@ const BLOCK_DEFS = {
   location: {
     label: () => "LOCATION",
     render: async (widget, status, vin, region, units, isEv, mapProvider) => renderLocation(widget, status, mapProvider),
+  },
+  commands: {
+    label: () => "COMMANDS (LOCK/UNLOCK/START/STOP)",
+    render: async (widget) => renderCommands(widget),
   },
 };
 
@@ -1346,6 +1437,8 @@ if (config.runsInWidget) {
   const widget = await buildWidget();
   Script.setWidget(widget);
   Script.complete();
+} else if (args.queryParameters && args.queryParameters.cmd) {
+  await runCommandFromWidget(args.queryParameters.cmd);
 } else if (!loadVin() || !loadToken()) {
   await runSetup();
 } else {
