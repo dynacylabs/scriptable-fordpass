@@ -843,6 +843,50 @@ function renderWindowsVerbose(widget, status, region) {
   addWindowCell(row2, grid.rear.right.label, grid.rear.right.value);
 }
 
+// ===================== vehicle health alerts =====================
+//
+// Confirmed live: "metrics.indicators" (not a top-level "messages" field, which
+// ha-fordpass also references but came back null/absent for this vehicle via this
+// endpoint) is a dict of ~45 named warning lights (checkEngineLight-style:
+// lowEngineOilPressure, tirePressureMonitorSystemWarning, airbagWarning, etc.), each
+// with a plain boolean .value. All false on this vehicle right now, i.e. no active
+// alerts — matches the old official-API dashboard's "No active alerts" case exactly.
+function activeHealthIndicators(status) {
+  const indicators = metric(status, "indicators");
+  if (!indicators || typeof indicators !== "object") return null;
+  return Object.keys(indicators)
+    .filter((key) => indicators[key] && indicators[key].value === true)
+    .map((key) => key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase()));
+}
+
+function healthAlertsSummaryText(status) {
+  const active = activeHealthIndicators(status);
+  if (active == null) return null;
+  return active.length === 0 ? "OK" : `${active.length} ALERT${active.length > 1 ? "S" : ""}`;
+}
+
+function renderHealthAlertsVerbose(widget, status) {
+  const active = activeHealthIndicators(status);
+
+  const title = widget.addText("VEHICLE HEALTH");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(3);
+
+  if (!active || active.length === 0) {
+    const t = widget.addText("No active alerts");
+    t.font = Font.systemFont(11);
+    t.textColor = Color.gray();
+    return;
+  }
+
+  for (const label of active) {
+    const t = widget.addText(label);
+    t.font = Font.boldSystemFont(11);
+    t.textColor = Color.orange();
+  }
+}
+
 // ===================== vehicle garage data (image) =====================
 //
 // Ford's FordPass-private garage endpoint returns a per-vehicle object including a
@@ -981,9 +1025,17 @@ const TILE_DEFS = {
     label: () => "ALARM",
     value: (status) => metricValue(status, "alarmStatus"),
   },
+  panicAlarm: {
+    label: () => "PANIC ALARM",
+    value: (status) => metricValue(status, "panicAlarmStatus"),
+  },
   ignition: {
     label: () => "IGNITION",
     value: (status) => metricValue(status, "ignitionStatus"),
+  },
+  health: {
+    label: () => "HEALTH",
+    value: (status) => healthAlertsSummaryText(status),
   },
 };
 
@@ -1011,6 +1063,10 @@ const BLOCK_DEFS = {
   windowsVerbose: {
     label: () => "WINDOWS (VERBOSE)",
     render: async (widget, status, vin, region) => renderWindowsVerbose(widget, status, region),
+  },
+  healthVerbose: {
+    label: () => "VEHICLE HEALTH (VERBOSE)",
+    render: async (widget, status) => renderHealthAlertsVerbose(widget, status),
   },
 };
 

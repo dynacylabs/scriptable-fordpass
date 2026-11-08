@@ -85,7 +85,10 @@ kinds of tokens — order doesn't matter except for item order:
   `temp` (outside temp), `oil` (oil life, ICE only), `battery12v` (12V battery), `tires` — a
   one-word summary ("OK", or e.g. "1 Low" / "2 issues") of Ford's own per-wheel verdict,
   `windows` — "CLOSED", "OPEN", or e.g. "1 OPEN" if some but not all are open, `alarm` (e.g.
-  "DISARMED"), `ignition` (e.g. "OFF").
+  "DISARMED" — the security system's armed state), `panicAlarm` (Ford's dedicated
+  triggered/panic-event field, kept separate from `alarm` rather than guessed-merged — see
+  Status below), `ignition` (e.g. "OFF"), `health` — "OK", or "N ALERT(S)" if any of ~45
+  individual warning lights (check engine, low oil pressure, TPMS fault, etc.) are active.
 - Full-width block names, each always on its own row: `doorsVerbose` — an alternative to
   `doors`, a 2×2 table (front driver/passenger side correctly placed per your region's driving
   side, rear left/right, plus a tailgate row if present). `tiresVerbose` — an alternative to
@@ -93,8 +96,9 @@ kinds of tokens — order doesn't matter except for item order:
   (front pair on top, rear pair below — not overlaid on the `image` block, just arranged the
   same way), pressure plus Ford's status word, in orange when not normal. `windowsVerbose` — an
   alternative to `windows`, the same 2×2 layout as `doorsVerbose` (front driver/passenger per
-  region, rear left/right), each cell OPEN (orange) or CLOSED. `image` — the vehicle's photo,
-  as shown in the real FordPass app.
+  region, rear left/right), each cell OPEN (orange) or CLOSED. `healthVerbose` — an alternative
+  to `health`: "No active alerts", or the full list of currently-active warning lights by name,
+  in orange. `image` — the vehicle's photo, as shown in the real FordPass app.
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
   preference (see Units below).
 - `notitle`, to hide the "FordPass" header entirely and reclaim that space.
@@ -141,6 +145,24 @@ the same widget first. `alarm` and `ignition` are confirmed too (`alarmStatus.va
 "DISARMED"; `ignitionStatus.value`: "OFF" on this vehicle, both plain single-value objects
 rather than arrays — only other states, like "ARMED" or "ON"/"RUN", aren't something this
 vehicle has been caught in yet to confirm the exact wording of).
+
+`alarm` vs. `panicAlarm`: "DISARMED" reads as security-system arm-state terminology (a
+*triggered* alarm wouldn't typically use that word), and `ha-fordpass`'s own code treats
+`alarmStatus` and a separate `panicAlarmStatus` field as two different concepts — the latter
+specifically for panic/triggered events, kept as its own attribute rather than merged into the
+former. That's reasonably strong evidence `alarm` (armed/disarmed) is already correct, but
+rather than guess, `panicAlarm` exposes the dedicated field too (confirmed live:
+`panicAlarmStatus.value`: "UNDEFINED", i.e. no panic event right now) so both can be compared
+against real values over time to settle it for sure.
+
+`health`/`healthVerbose` are confirmed live too: `metrics.indicators` (not a top-level
+`messages` field, which `ha-fordpass` also references but came back `null` for this vehicle via
+this endpoint) is a dict of ~45 named warning lights, each a plain boolean — all `false` right
+now, matching the old official-API dashboard's "No active alerts" exactly. Verified the
+summary/list logic directly against the real data plus two simulated active faults
+(`lowEngineOilPressure`, `tirePressureMonitorSystemWarning`) before shipping, same as the other
+features here — correct pluralization and camelCase→Title Case humanization confirmed, not just
+reasoned about.
 
 The raw metric key names used for range, outside temp, oil life, and 12V battery come from
 [ha-fordpass](https://github.com/marq24/ha-fordpass)'s own field mapping, not yet cross-checked
