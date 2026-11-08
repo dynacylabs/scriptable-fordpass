@@ -78,16 +78,21 @@ either:
 ## Parameter field reference
 
 A widget's Parameter field is a single text field, used as a comma-separated list mixing two
-kinds of tokens — order doesn't matter except for tile order:
+kinds of tokens — order doesn't matter except for item order:
 
-- Tile names, in the order you want them shown: `doors`, `fuel` (fuel level or EV charge %),
-  `range`, `odometer`, `temp` (outside temp), `oil12v` (oil life, or 12V battery for EVs).
+- Item names, in the order you want them shown: `doors` (collapsed, one line), `fuel` (fuel
+  level or EV charge %), `range`, `odometer`, `temp` (outside temp), `oil12v` (oil life, or
+  12V battery for EVs) — each of these takes a third of a row, 3 to a row. `doorsVerbose` is a
+  full-width alternative to `doors`: a 2×2 table (front driver/passenger side correctly placed
+  per your region's driving side, rear left/right, plus a tailgate row if present), always on
+  its own row.
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
   preference (see Units below).
 
-Example: `doors,fuel,odometer,metric` shows exactly those three tiles, in that order, in
-metric. Leave it blank to get the saved default (configured as above), or — if you've never
-opened the configurator — the built-in default (small widgets show just doors + fuel; medium
+Example: `doorsVerbose,fuel,odometer,metric` shows the door table, then fuel + odometer on
+their own row below it, in metric. Leave it blank to get the saved default (configured as
+above), or — if you've never opened the configurator — the built-in default (small widgets
+show just doors + fuel; medium
 and large show all six tiles). An unrecognized token is silently ignored rather than erroring,
 so a typo just falls back to the default rather than breaking the widget.
 
@@ -112,3 +117,10 @@ kPa) come from [ha-fordpass](https://github.com/marq24/ha-fordpass)'s own field 
 cross-checked against this script's own live output — if any of those tiles come up blank, use
 the in-script menu's "Refresh status" (which opens the full raw JSON via QuickLook) to find the
 right key and adjust the `metricValue(...)` calls in `buildWidget()`.
+
+A vehicle-image tile (the branded thumbnail the real FordPass app shows) was investigated and
+dropped for now: the unauthenticated endpoint `tonesto7/fordpass-scriptable` uses for this is
+dead (`www.digitalservices.ford.com` no longer resolves), and its apparent replacement
+(`api.mps.ford.com/api/imageservice/data`) now requires a bearer token that nothing in that
+reference project actually obtains either — worth revisiting if a working token source turns
+up, but not a quick port.

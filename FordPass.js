@@ -192,20 +192,21 @@ function saveUnits(units) {
   Keychain.set(KEYCHAIN_UNITS_KEY, units);
 }
 
-// The default tile set used by any widget whose own Parameter field is blank — set via
-// the in-script "Configure widget" picker rather than typed by hand. null means "no
-// preference saved yet", so buildWidget falls back to its own small/full defaults.
+// The default item set (tiles and/or full-width blocks) used by any widget whose own
+// Parameter field is blank — set via the in-script "Configure widget" picker rather
+// than typed by hand. null means "no preference saved yet", so buildWidget falls back
+// to its own small/full tile defaults.
 function loadDefaultTiles() {
   if (!Keychain.contains(KEYCHAIN_DEFAULT_TILES_KEY)) return null;
-  const tiles = Keychain.get(KEYCHAIN_DEFAULT_TILES_KEY)
+  const items = Keychain.get(KEYCHAIN_DEFAULT_TILES_KEY)
     .split(",")
     .map((s) => s.trim())
-    .filter((t) => TILE_DEFS[t]);
-  return tiles.length ? tiles : null;
+    .filter((t) => TILE_DEFS[t] || BLOCK_DEFS[t]);
+  return items.length ? items : null;
 }
 
-function saveDefaultTiles(tiles) {
-  Keychain.set(KEYCHAIN_DEFAULT_TILES_KEY, tiles.join(","));
+function saveDefaultTiles(items) {
+  Keychain.set(KEYCHAIN_DEFAULT_TILES_KEY, items.join(","));
 }
 
 function isExpired(timestampMs) {
@@ -561,6 +562,91 @@ function addTile(stack, label, value) {
   v.font = Font.boldSystemFont(15);
 }
 
+// ===================== doors (verbose layout) =====================
+//
+// Ford labels front doors explicitly ("UNSPECIFIED_FRONT" + occupant role DRIVER/
+// PASSENGER), so those map cleanly to driver/passenger sides via each region's
+// driving side. Rear doors come back as plain "REAR_LEFT"/"REAR_RIGHT" with no
+// reliable role data in what we've seen live, so those are labeled literally as
+// left/right (vehicle-frame geometry) rather than guessed as driver/passenger.
+const RHD_REGIONS = new Set(["gbr", "aus", "nzl", "zaf"]);
+
+function doorEntries(status, metricKey) {
+  const node = metric(status, metricKey);
+  return Array.isArray(node) ? node : [];
+}
+
+function findDoorValue(entries, matcher) {
+  const e = entries.find(matcher);
+  return e ? e.value : null;
+}
+
+function buildDoorGrid(status, region) {
+  const locks = doorEntries(status, "doorLockStatus");
+  const opens = doorEntries(status, "doorStatus");
+  const driverIsLeft = !RHD_REGIONS.has(region);
+
+  const front = (role) => ({
+    label: role,
+    open: findDoorValue(opens, (d) => d.vehicleDoor === "UNSPECIFIED_FRONT" && d.vehicleOccupantRole === role),
+    lock: findDoorValue(locks, (d) => d.vehicleDoor === "UNSPECIFIED_FRONT" && d.vehicleOccupantRole === role),
+  });
+  const rear = (side) => ({
+    label: `REAR ${side}`,
+    open: findDoorValue(opens, (d) => d.vehicleDoor === `REAR_${side}`),
+    lock: findDoorValue(locks, (d) => d.vehicleDoor === `REAR_${side}`),
+  });
+
+  return {
+    front: { left: front(driverIsLeft ? "DRIVER" : "PASSENGER"), right: front(driverIsLeft ? "PASSENGER" : "DRIVER") },
+    rear: { left: rear("LEFT"), right: rear("RIGHT") },
+    tailgate: findDoorValue(opens, (d) => d.vehicleDoor === "TAILGATE"),
+  };
+}
+
+function addDoorCell(stack, label, openVal, lockVal) {
+  const col = stack.addStack();
+  col.layoutVertically();
+  const l = col.addText(label);
+  l.font = Font.systemFont(9);
+  l.textColor = Color.gray();
+  const o = col.addText(openVal || "—");
+  o.font = Font.boldSystemFont(12);
+  if (lockVal) {
+    const k = col.addText(lockVal);
+    k.font = Font.systemFont(9);
+    k.textColor = Color.gray();
+  }
+}
+
+function renderDoorsVerbose(widget, status, region) {
+  const grid = buildDoorGrid(status, region);
+
+  const title = widget.addText("DOORS");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(3);
+
+  const row1 = widget.addStack();
+  row1.layoutHorizontally();
+  addDoorCell(row1, grid.front.left.label, grid.front.left.open, grid.front.left.lock);
+  row1.addSpacer(16);
+  addDoorCell(row1, grid.front.right.label, grid.front.right.open, grid.front.right.lock);
+
+  widget.addSpacer(6);
+  const row2 = widget.addStack();
+  row2.layoutHorizontally();
+  addDoorCell(row2, grid.rear.left.label, grid.rear.left.open, grid.rear.left.lock);
+  row2.addSpacer(16);
+  addDoorCell(row2, grid.rear.right.label, grid.rear.right.open, grid.rear.right.lock);
+
+  if (grid.tailgate) {
+    widget.addSpacer(6);
+    const row3 = widget.addStack();
+    addDoorCell(row3, "TAILGATE", grid.tailgate, null);
+  }
+}
+
 // Each tile is keyed by the token a widget's Parameter field uses to request it (see
 // parseWidgetParameter). label/value may depend on units and whether the vehicle is
 // an EV (fuelLevel vs. xevBatteryStateOfCharge, oil life vs. 12V battery).
@@ -599,9 +685,27 @@ const DEFAULT_TILES_SMALL = ["doors", "fuel"];
 const DEFAULT_TILES_FULL = ["doors", "fuel", "range", "odometer", "temp", "oil12v"];
 const TILES_PER_ROW = 3;
 
+// Full-width elements — unlike TILE_DEFS entries, these render themselves (not as a
+// 1/3-width grid cell), so they get their own row whenever they appear in the
+// selected item list. "doors" (collapsed, the single-line version) stays in
+// TILE_DEFS; "doorsVerbose" is the per-door table alternative.
+//
+// A vehicle-image block was attempted and pulled: the unauthenticated thumbnail
+// endpoint tonesto7/fordpass-scriptable's own code uses no longer resolves
+// (www.digitalservices.ford.com is dead — confirmed via DNS), and the endpoint that
+// replaced it (api.mps.ford.com/api/imageservice/data) now requires a bearer token
+// that nothing in that reference project actually obtains either (its own
+// "fpPubToken" setting is read in several places but never written anywhere).
+const BLOCK_DEFS = {
+  doorsVerbose: {
+    label: () => "DOORS (VERBOSE)",
+    render: async (widget, status, vin, region) => renderDoorsVerbose(widget, status, region),
+  },
+};
+
 // A widget's own "Parameter" field (long-press widget -> Edit Widget) is a single text
-// field, so it doubles as a tiny config language: a comma-separated list mixing tile
-// names (see TILE_DEFS) with "imperial"/"metric". Order of tile names controls display
+// field, so it doubles as a tiny config language: a comma-separated list mixing item
+// names (see TILE_DEFS/BLOCK_DEFS) with "imperial"/"metric". Order controls display
 // order. Unrecognized tokens are ignored rather than erroring, so a typo just falls
 // back to defaults instead of breaking the widget. Example: "doors,fuel,odometer,metric".
 function parseWidgetParameter(paramStr) {
@@ -610,12 +714,12 @@ function parseWidgetParameter(paramStr) {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   let units = null;
-  const tiles = [];
+  const items = [];
   for (const t of tokens) {
     if (t === "imperial" || t === "metric") units = t;
-    else if (TILE_DEFS[t]) tiles.push(t);
+    else if (TILE_DEFS[t] || BLOCK_DEFS[t]) items.push(t);
   }
-  return { units, tiles: tiles.length ? tiles : null };
+  return { units, items: items.length ? items : null };
 }
 
 // Interactive picker (run the script, not from a widget) so the Parameter mini-language
@@ -623,7 +727,7 @@ function parseWidgetParameter(paramStr) {
 // any widget with a blank Parameter field, or copy a ready-made Parameter string to
 // paste into one specific widget that should differ from the default.
 async function runTileConfigurator() {
-  const orderedTileKeys = Object.keys(TILE_DEFS);
+  const orderedItemKeys = [...Object.keys(TILE_DEFS), ...Object.keys(BLOCK_DEFS)];
   const selected = new Set(loadDefaultTiles() || DEFAULT_TILES_FULL);
   let units = loadUnits();
 
@@ -631,7 +735,7 @@ async function runTileConfigurator() {
   table.showSeparators = true;
 
   function selectedInOrder() {
-    return orderedTileKeys.filter((k) => selected.has(k));
+    return orderedItemKeys.filter((k) => selected.has(k));
   }
 
   function render() {
@@ -651,10 +755,11 @@ async function runTileConfigurator() {
     };
     table.addRow(unitsRow);
 
-    for (const key of orderedTileKeys) {
+    for (const key of orderedItemKeys) {
       const row = new UITableRow();
       row.dismissOnSelect = false;
-      const label = TILE_DEFS[key].label(false);
+      const def = TILE_DEFS[key] || BLOCK_DEFS[key];
+      const label = def.label(false);
       row.addText(selected.has(key) ? `✓  ${label}` : `　  ${label}`);
       row.onSelect = () => {
         if (selected.has(key)) selected.delete(key);
@@ -712,7 +817,7 @@ async function buildWidget() {
   const paramCfg = parseWidgetParameter(args.widgetParameter);
   const units = paramCfg.units || loadUnits();
   const compact = config.widgetFamily === "small";
-  const tileKeys = paramCfg.tiles || loadDefaultTiles() || (compact ? DEFAULT_TILES_SMALL : DEFAULT_TILES_FULL);
+  const itemKeys = paramCfg.items || loadDefaultTiles() || (compact ? DEFAULT_TILES_SMALL : DEFAULT_TILES_FULL);
 
   try {
     const status = await getStatus(vin, REGIONS[region]);
@@ -723,17 +828,38 @@ async function buildWidget() {
 
     const isEv = metric(status, "xevBatteryStateOfCharge") != null;
 
-    for (let i = 0; i < tileKeys.length; i += TILES_PER_ROW) {
-      if (i > 0) widget.addSpacer(10);
-      const rowKeys = tileKeys.slice(i, i + TILES_PER_ROW);
-      const row = widget.addStack();
-      row.layoutHorizontally();
-      rowKeys.forEach((key, idx) => {
-        const def = TILE_DEFS[key];
-        addTile(row, def.label(isEv), def.value(status, units, isEv));
-        if (idx < rowKeys.length - 1) row.addSpacer(16);
-      });
+    // Tiles (TILE_DEFS) accumulate into rows of up to 3; a block (BLOCK_DEFS) is
+    // full-width, so it flushes whatever tiles were pending first, then renders itself.
+    let pendingTiles = [];
+    let needsSpacer = false;
+
+    const flushTiles = () => {
+      for (let i = 0; i < pendingTiles.length; i += TILES_PER_ROW) {
+        if (needsSpacer) widget.addSpacer(10);
+        needsSpacer = true;
+        const rowKeys = pendingTiles.slice(i, i + TILES_PER_ROW);
+        const row = widget.addStack();
+        row.layoutHorizontally();
+        rowKeys.forEach((key, idx) => {
+          const def = TILE_DEFS[key];
+          addTile(row, def.label(isEv), def.value(status, units, isEv));
+          if (idx < rowKeys.length - 1) row.addSpacer(16);
+        });
+      }
+      pendingTiles = [];
+    };
+
+    for (const key of itemKeys) {
+      if (TILE_DEFS[key]) {
+        pendingTiles.push(key);
+      } else if (BLOCK_DEFS[key]) {
+        flushTiles();
+        if (needsSpacer) widget.addSpacer(10);
+        needsSpacer = true;
+        await BLOCK_DEFS[key].render(widget, status, vin, region, units, isEv);
+      }
     }
+    flushTiles();
 
     widget.addSpacer(8);
     const updatedAt = metric(status, "doorLockStatus.0.updateTime") || metric(status, "odometer.updateTime");
