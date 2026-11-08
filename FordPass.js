@@ -600,36 +600,36 @@ function addTile(stack, label, value) {
 // left/right (vehicle-frame geometry) rather than guessed as driver/passenger.
 const RHD_REGIONS = new Set(["gbr", "aus", "nzl", "zaf"]);
 
-function doorEntries(status, metricKey) {
+function metricArray(status, metricKey) {
   const node = metric(status, metricKey);
   return Array.isArray(node) ? node : [];
 }
 
-function findDoorValue(entries, matcher) {
+function findMetricValue(entries, matcher) {
   const e = entries.find(matcher);
   return e ? e.value : null;
 }
 
 function buildDoorGrid(status, region) {
-  const locks = doorEntries(status, "doorLockStatus");
-  const opens = doorEntries(status, "doorStatus");
+  const locks = metricArray(status, "doorLockStatus");
+  const opens = metricArray(status, "doorStatus");
   const driverIsLeft = !RHD_REGIONS.has(region);
 
   const front = (role) => ({
     label: role,
-    open: findDoorValue(opens, (d) => d.vehicleDoor === "UNSPECIFIED_FRONT" && d.vehicleOccupantRole === role),
-    lock: findDoorValue(locks, (d) => d.vehicleDoor === "UNSPECIFIED_FRONT" && d.vehicleOccupantRole === role),
+    open: findMetricValue(opens, (d) => d.vehicleDoor === "UNSPECIFIED_FRONT" && d.vehicleOccupantRole === role),
+    lock: findMetricValue(locks, (d) => d.vehicleDoor === "UNSPECIFIED_FRONT" && d.vehicleOccupantRole === role),
   });
   const rear = (side) => ({
     label: `REAR ${side}`,
-    open: findDoorValue(opens, (d) => d.vehicleDoor === `REAR_${side}`),
-    lock: findDoorValue(locks, (d) => d.vehicleDoor === `REAR_${side}`),
+    open: findMetricValue(opens, (d) => d.vehicleDoor === `REAR_${side}`),
+    lock: findMetricValue(locks, (d) => d.vehicleDoor === `REAR_${side}`),
   });
 
   return {
     front: { left: front(driverIsLeft ? "DRIVER" : "PASSENGER"), right: front(driverIsLeft ? "PASSENGER" : "DRIVER") },
     rear: { left: rear("LEFT"), right: rear("RIGHT") },
-    tailgate: findDoorValue(opens, (d) => d.vehicleDoor === "TAILGATE"),
+    tailgate: findMetricValue(opens, (d) => d.vehicleDoor === "TAILGATE"),
   };
 }
 
@@ -674,6 +674,91 @@ function renderDoorsVerbose(widget, status, region) {
     const row3 = widget.addStack();
     addDoorCell(row3, "TAILGATE", grid.tailgate, null);
   }
+}
+
+// ===================== tire pressure =====================
+//
+// Confirmed live: tirePressure gives raw pressure in kPa, and tirePressureStatus gives
+// Ford's own per-wheel verdict (e.g. "NORMAL", confirmed; other values unconfirmed but
+// treated generically — anything that isn't "NORMAL" counts as a problem). So severity
+// is Ford's own determination against the vehicle's actual placard spec, not a
+// threshold this script invents.
+const TIRE_WHEELS = [
+  { key: "FRONT_LEFT", label: "FRONT LEFT" },
+  { key: "FRONT_RIGHT", label: "FRONT RIGHT" },
+  { key: "REAR_LEFT", label: "REAR LEFT" },
+  { key: "REAR_RIGHT", label: "REAR RIGHT" },
+];
+
+function humanizeStatus(status) {
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function buildTireGrid(status, units) {
+  const pressures = metricArray(status, "tirePressure");
+  const statuses = metricArray(status, "tirePressureStatus");
+
+  return TIRE_WHEELS.map((wheel) => {
+    const pressureEntry = pressures.find((p) => p.vehicleWheel === wheel.key);
+    const statusValue = findMetricValue(statuses, (s) => s.vehicleWheel === wheel.key);
+    return {
+      label: wheel.label,
+      pressure: pressureEntry ? formatPressureKpa(pressureEntry.value, units) : null,
+      status: statusValue,
+      normal: statusValue == null || statusValue === "NORMAL",
+    };
+  });
+}
+
+function tireSummaryText(status) {
+  const statuses = metricArray(status, "tirePressureStatus");
+  if (statuses.length === 0) return null;
+  const bad = statuses.filter((s) => s.value !== "NORMAL").map((s) => s.value);
+  if (bad.length === 0) return "OK";
+  const distinct = [...new Set(bad)];
+  return distinct.length === 1 ? `${bad.length} ${humanizeStatus(distinct[0])}` : `${bad.length} issues`;
+}
+
+function addTireCell(stack, tire) {
+  const col = stack.addStack();
+  col.layoutVertically();
+  const l = col.addText(tire.label);
+  l.font = Font.systemFont(9);
+  l.textColor = Color.gray();
+  const p = col.addText(tire.pressure || "—");
+  p.font = Font.boldSystemFont(12);
+  if (!tire.normal) p.textColor = Color.orange();
+  if (tire.status && !tire.normal) {
+    const s = col.addText(humanizeStatus(tire.status));
+    s.font = Font.systemFont(9);
+    s.textColor = Color.orange();
+  }
+}
+
+function renderTiresVerbose(widget, status, units) {
+  const [fl, fr, rl, rr] = buildTireGrid(status, units);
+
+  const title = widget.addText("TIRE PRESSURE");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(3);
+
+  const row1 = widget.addStack();
+  row1.layoutHorizontally();
+  addTireCell(row1, fl);
+  row1.addSpacer(16);
+  addTireCell(row1, fr);
+
+  widget.addSpacer(6);
+  const row2 = widget.addStack();
+  row2.layoutHorizontally();
+  addTireCell(row2, rl);
+  row2.addSpacer(16);
+  addTireCell(row2, rr);
 }
 
 // ===================== vehicle garage data (image) =====================
@@ -802,6 +887,10 @@ const TILE_DEFS = {
     label: () => "12V BATT",
     value: (status) => formatPercent(metricValue(status, "batteryStateOfCharge")),
   },
+  tires: {
+    label: () => "TIRES",
+    value: (status) => tireSummaryText(status),
+  },
 };
 
 const DEFAULT_TILES_SMALL = ["doors", "fuel"];
@@ -820,6 +909,10 @@ const BLOCK_DEFS = {
   doorsVerbose: {
     label: () => "DOORS (VERBOSE)",
     render: async (widget, status, vin, region) => renderDoorsVerbose(widget, status, region),
+  },
+  tiresVerbose: {
+    label: () => "TIRES (VERBOSE)",
+    render: async (widget, status, vin, region, units) => renderTiresVerbose(widget, status, units),
   },
 };
 
