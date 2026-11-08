@@ -689,6 +689,7 @@ async function runTileConfigurator() {
       await a.presentAlert();
     };
     table.addRow(copyRow);
+    table.reload(); // rows were rebuilt above — without this the presented table never visually updates
   }
 
   render();
