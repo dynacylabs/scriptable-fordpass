@@ -75,6 +75,7 @@ const KEYCHAIN_VIN_KEY = "fordconnect_vin";
 const KEYCHAIN_REGION_KEY = "fordconnect_region";
 const KEYCHAIN_UNITS_KEY = "fordconnect_units";
 const KEYCHAIN_DEFAULT_TILES_KEY = "fordconnect_default_tiles";
+const KEYCHAIN_TITLE_MODE_KEY = "fordconnect_title_mode";
 const EXPIRY_SKEW_MS = 60 * 1000;
 
 // ===================== small helpers (no Web APIs in Scriptable's JS runtime) =====================
@@ -191,6 +192,16 @@ function loadUnits() {
 
 function saveUnits(units) {
   Keychain.set(KEYCHAIN_UNITS_KEY, units);
+}
+
+// "fordpass" (the literal word), "nickname" (your vehicle's name, e.g. "Cletus"), or
+// "hidden" (no header at all).
+function loadTitleMode() {
+  return Keychain.contains(KEYCHAIN_TITLE_MODE_KEY) ? Keychain.get(KEYCHAIN_TITLE_MODE_KEY) : "fordpass";
+}
+
+function saveTitleMode(mode) {
+  Keychain.set(KEYCHAIN_TITLE_MODE_KEY, mode);
 }
 
 // The default item set (tiles and/or full-width blocks) used by any widget whose own
@@ -666,15 +677,47 @@ function renderDoorsVerbose(widget, status, region) {
   }
 }
 
-// ===================== vehicle image =====================
+// ===================== vehicle garage data (image, nickname) =====================
 //
-// Unlike tonesto7/fordpass-scriptable's approach (a thumbnail URL built from
-// VIN+year+country, against an endpoint that's now dead — see commit history),
-// this ports ha-fordpass's current approach instead: Ford's own FordPass-private
-// garage endpoint returns a ready-made image URL per vehicle, and fetching it needs
-// no new auth — just our existing access_token, via a custom "auth-token" header
-// (not "Authorization: Bearer") alongside Application-Id. Not yet verified against a
-// live account this session (no cached token) — worth confirming once reconnected.
+// Ford's FordPass-private garage endpoint returns a per-vehicle object including a
+// ready-made image URL, and needs no new auth — just our existing access_token, via a
+// custom "auth-token" header (not "Authorization: Bearer") alongside Application-Id.
+// Ported from ha-fordpass's current approach, not tonesto7/fordpass-scriptable's (a
+// thumbnail URL built from VIN+year+country, against an endpoint that's now dead —
+// see commit history). Confirmed working live for the image this session.
+async function fetchGarageVehicle(token, vin, regionCfg) {
+  const fm = FileManager.local();
+  const cachePath = fm.joinPath(fm.cacheDirectory(), `fordconnect_garage_${vin}.json`);
+  if (fm.fileExists(cachePath)) {
+    try {
+      return JSON.parse(fm.readString(cachePath));
+    } catch (e) {
+      // fall through and re-fetch
+    }
+  }
+
+  const garageReq = new Request(`${FORD_VEHICLE_API}/fpcpl-user-garage-service/v1/user/garage`);
+  garageReq.headers = {
+    ...API_HEADERS,
+    "auth-token": token.access_token,
+    "Application-Id": regionCfg.app_id,
+    countryCode: regionCfg.countrycode,
+    locale: regionCfg.locale,
+  };
+  let garage;
+  try {
+    garage = await garageReq.loadJSON();
+  } catch (e) {
+    return null;
+  }
+  if (!Array.isArray(garage)) return null;
+  const vehicle = garage.find((v) => v.vin === vin);
+  if (!vehicle) return null;
+
+  fm.writeString(cachePath, JSON.stringify(vehicle));
+  return vehicle;
+}
+
 async function fetchVehicleImage(token, vin, regionCfg) {
   const fm = FileManager.local();
   const cachePath = fm.joinPath(fm.cacheDirectory(), `fordconnect_vehicle_${vin}.png`);
@@ -686,23 +729,7 @@ async function fetchVehicleImage(token, vin, regionCfg) {
     }
   }
 
-  const garageHeaders = {
-    ...API_HEADERS,
-    "auth-token": token.access_token,
-    "Application-Id": regionCfg.app_id,
-    countryCode: regionCfg.countrycode,
-    locale: regionCfg.locale,
-  };
-  const garageReq = new Request(`${FORD_VEHICLE_API}/fpcpl-user-garage-service/v1/user/garage`);
-  garageReq.headers = garageHeaders;
-  let garage;
-  try {
-    garage = await garageReq.loadJSON();
-  } catch (e) {
-    return null;
-  }
-  if (!Array.isArray(garage)) return null;
-  const vehicle = garage.find((v) => v.vin === vin);
+  const vehicle = await fetchGarageVehicle(token, vin, regionCfg);
   const imageUrl = vehicle && vehicle.profile && vehicle.profile.vehicleImage;
   if (!imageUrl) return null;
 
@@ -719,6 +746,27 @@ async function fetchVehicleImage(token, vin, regionCfg) {
     // No bundled placeholder — the image block is just skipped on failure.
   }
   return null;
+}
+
+// Field name is a guess (checked several plausible candidates) — ha-fordpass doesn't
+// reference a nickname anywhere, so unlike the image this one has no reference
+// implementation to confirm against. Needs live verification; see Status in the README.
+function extractNickname(vehicle) {
+  if (!vehicle) return null;
+  const candidates = [
+    vehicle.nickName,
+    vehicle.nickname,
+    vehicle.profile && vehicle.profile.nickName,
+    vehicle.profile && vehicle.profile.nickname,
+    vehicle.profile && vehicle.profile.vehicleNickname,
+    vehicle.profile && vehicle.profile.name,
+  ];
+  return candidates.find((v) => typeof v === "string" && v.trim().length > 0) || null;
+}
+
+async function fetchVehicleNickname(token, vin, regionCfg) {
+  const vehicle = await fetchGarageVehicle(token, vin, regionCfg);
+  return extractNickname(vehicle);
 }
 
 // ListWidget has a fixed pixel canvas per family and doesn't scroll — content past the
@@ -808,12 +856,15 @@ function parseWidgetParameter(paramStr) {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   let units = null;
+  let titleMode = null;
   const items = [];
   for (const t of tokens) {
     if (t === "imperial" || t === "metric") units = t;
+    else if (t === "nickname") titleMode = "nickname";
+    else if (t === "notitle") titleMode = "hidden";
     else if (TILE_DEFS[t] || BLOCK_DEFS[t]) items.push(t);
   }
-  return { units, items: items.length ? items : null };
+  return { units, titleMode, items: items.length ? items : null };
 }
 
 // Interactive picker (run the script, not from a widget) so the Parameter mini-language
@@ -824,6 +875,9 @@ async function runTileConfigurator() {
   const orderedItemKeys = [...Object.keys(TILE_DEFS), ...Object.keys(BLOCK_DEFS)];
   const selected = new Set(loadDefaultTiles() || DEFAULT_TILES_FULL);
   let units = loadUnits();
+  let titleMode = loadTitleMode();
+  const TITLE_MODE_LABELS = { fordpass: '"FordPass"', nickname: "vehicle nickname", hidden: "hidden" };
+  const TITLE_MODE_CYCLE = ["fordpass", "nickname", "hidden"];
 
   const table = new UITable();
   table.showSeparators = true;
@@ -849,6 +903,15 @@ async function runTileConfigurator() {
     };
     table.addRow(unitsRow);
 
+    const titleRow = new UITableRow();
+    titleRow.dismissOnSelect = false;
+    titleRow.addText("Title", TITLE_MODE_LABELS[titleMode]);
+    titleRow.onSelect = () => {
+      titleMode = TITLE_MODE_CYCLE[(TITLE_MODE_CYCLE.indexOf(titleMode) + 1) % TITLE_MODE_CYCLE.length];
+      render();
+    };
+    table.addRow(titleRow);
+
     for (const key of orderedItemKeys) {
       const row = new UITableRow();
       row.dismissOnSelect = false;
@@ -868,6 +931,7 @@ async function runTileConfigurator() {
     saveBtn.onTap = async () => {
       saveDefaultTiles(selectedInOrder());
       saveUnits(units);
+      saveTitleMode(titleMode);
       const a = new Alert();
       a.title = "Saved";
       a.message = "Widgets with a blank Parameter field will use this set next refresh.";
@@ -879,7 +943,8 @@ async function runTileConfigurator() {
     const copyRow = new UITableRow();
     const copyBtn = copyRow.addButton("Copy as Parameter text for one specific widget");
     copyBtn.onTap = async () => {
-      const paramStr = [...selectedInOrder(), units].join(",");
+      const titleToken = titleMode === "nickname" ? "nickname" : titleMode === "hidden" ? "notitle" : null;
+      const paramStr = [...selectedInOrder(), units, titleToken].filter(Boolean).join(",");
       Pasteboard.copyString(paramStr);
       const a = new Alert();
       a.title = "Copied";
@@ -910,15 +975,23 @@ async function buildWidget() {
 
   const paramCfg = parseWidgetParameter(args.widgetParameter);
   const units = paramCfg.units || loadUnits();
+  const titleMode = paramCfg.titleMode || loadTitleMode();
   const compact = config.widgetFamily === "small";
   const itemKeys = paramCfg.items || loadDefaultTiles() || (compact ? DEFAULT_TILES_SMALL : DEFAULT_TILES_FULL);
 
   try {
     const status = await getStatus(vin, REGIONS[region]);
 
-    const title = widget.addText("FordPass");
-    title.font = Font.boldSystemFont(13);
-    widget.addSpacer(8);
+    if (titleMode !== "hidden") {
+      let titleText = "FordPass";
+      if (titleMode === "nickname") {
+        const token = await getValidToken(REGIONS[region]);
+        titleText = (await fetchVehicleNickname(token, vin, REGIONS[region])) || "FordPass";
+      }
+      const title = widget.addText(titleText);
+      title.font = Font.boldSystemFont(13);
+      widget.addSpacer(8);
+    }
 
     const isEv = metric(status, "xevBatteryStateOfCharge") != null;
 

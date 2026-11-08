@@ -89,13 +89,17 @@ kinds of tokens — order doesn't matter except for item order:
   shown in the real FordPass app.
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
   preference (see Units below).
+- `nickname` or `notitle`, to override the header: show your vehicle's nickname (e.g.
+  "Cletus") instead of the literal word "FordPass", or hide the header entirely to reclaim
+  that space. Leaving both out keeps "FordPass".
 
-Example: `doorsVerbose,fuel,odometer,metric` shows the door table, then fuel + odometer on
-their own row below it, in metric. Leave it blank to get the saved default (configured as
-above), or — if you've never opened the configurator — the built-in default (small widgets
-show just doors + fuel; medium
-and large show all six tiles). An unrecognized token is silently ignored rather than erroring,
-so a typo just falls back to the default rather than breaking the widget.
+Example: `doorsVerbose,fuel,odometer,metric,nickname` shows the door table, then fuel +
+odometer on their own row below it, in metric, with your vehicle's name as the header instead
+of "FordPass". Leave it blank to get the saved default (configured as above), or — if you've
+never opened the configurator — the built-in default (small widgets show just doors + fuel;
+medium and large show all tiles, header reads "FordPass"). An unrecognized token is silently
+ignored rather than erroring, so a typo just falls back to the default rather than breaking
+the widget.
 
 ## Units
 
@@ -112,21 +116,22 @@ conversion applies to those.
 Ported and unit-tested for the crypto/protocol pieces (the vendored SHA-256 matches known test
 vectors, and the token-exchange/refresh calls mirror an earlier Python implementation that was
 verified live against Ford's real endpoints), and confirmed working end-to-end on a physical
-device for sign-in and the core doors/fuel/odometer tiles. The raw metric key names used for the
-newer fields (range, outside temp, oil life, 12V battery) and the raw-unit assumptions (km/°C/
-kPa) come from [ha-fordpass](https://github.com/marq24/ha-fordpass)'s own field mapping, not yet
-cross-checked against this script's own live output — if any of those tiles come up blank, use
-the in-script menu's "Refresh status" (which opens the full raw JSON via QuickLook) to find the
-right key and adjust the `metricValue(...)` calls in `buildWidget()`.
+device for sign-in, the core doors/fuel/odometer tiles, and the `image` block. `doorsVerbose`'s
+own door-grid logic was also confirmed correct by running it directly against real live
+telemetry (real values for every door, nothing null/missing) — if it still appears to show
+nothing on a given widget, that's more likely the widget's fixed, non-scrolling canvas clipping
+content than a logic bug; try it with fewer other items in the same widget first.
 
-The `image` block (vehicle photo) is unverified against a live account — no cached token this
-session to test with. Its approach is ported from `ha-fordpass` rather than
-`tonesto7/fordpass-scriptable`: that project's thumbnail endpoint
-(`www.digitalservices.ford.com`) no longer resolves at all (confirmed dead via DNS), so instead
-this calls Ford's FordPass-private garage endpoint
-(`api.vehicle.ford.com/api/fpcpl-user-garage-service/v1/user/garage`) to read a ready-made
-`profile.vehicleImage` URL per vehicle, authenticated with the same `access_token` everything
-else here already uses (via a custom `auth-token` header, not `Authorization: Bearer`) — no new
-auth flow needed. Worth confirming once reconnected; if it comes up blank, "Refresh status" +
-QuickLook only shows telemetry, not the garage response, so check `fetchVehicleImage()`
-directly (e.g. temporarily `console.log` the garage JSON).
+The raw metric key names used for range, outside temp, oil life, and 12V battery come from
+[ha-fordpass](https://github.com/marq24/ha-fordpass)'s own field mapping, not yet cross-checked
+against this script's own live output — if any of those tiles come up blank, use the in-script
+menu's "Refresh status" (which opens the full raw JSON via QuickLook) to find the right key and
+adjust the `metricValue(...)` calls in `buildWidget()`.
+
+The `nickname` title mode is an unverified guess at the field name: `ha-fordpass` doesn't
+reference a vehicle nickname anywhere, so unlike the image there's no reference implementation
+to confirm against — `extractNickname()` tries several plausible field names
+(`nickName`/`nickname`/`profile.nickName`/`profile.vehicleNickname`/`profile.name`) and falls
+back to "FordPass" if none match. If your vehicle's actual nickname never shows up, the garage
+JSON needs inspecting directly (not surfaced by "Refresh status", which only shows telemetry —
+temporarily `console.log` the result of `fetchGarageVehicle()` instead) to find the real key.
