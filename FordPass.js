@@ -72,6 +72,7 @@ const REGIONS = {
 const KEYCHAIN_TOKEN_KEY = "fordconnect_fordpass_token";
 const KEYCHAIN_VIN_KEY = "fordconnect_vin";
 const KEYCHAIN_REGION_KEY = "fordconnect_region";
+const KEYCHAIN_UNITS_KEY = "fordconnect_units";
 const EXPIRY_SKEW_MS = 60 * 1000;
 
 // ===================== small helpers (no Web APIs in Scriptable's JS runtime) =====================
@@ -180,6 +181,20 @@ function loadVin() {
 
 function loadRegion() {
   return Keychain.contains(KEYCHAIN_REGION_KEY) ? Keychain.get(KEYCHAIN_REGION_KEY) : "usa";
+}
+
+// A widget's own "Parameter" field (long-press widget -> Edit Widget) overrides the
+// saved preference for that widget instance, if it's set to "imperial" or "metric".
+function loadUnits() {
+  if (config.runsInWidget && args.widgetParameter) {
+    const p = String(args.widgetParameter).trim().toLowerCase();
+    if (p === "imperial" || p === "metric") return p;
+  }
+  return Keychain.contains(KEYCHAIN_UNITS_KEY) ? Keychain.get(KEYCHAIN_UNITS_KEY) : "imperial";
+}
+
+function saveUnits(units) {
+  Keychain.set(KEYCHAIN_UNITS_KEY, units);
 }
 
 function isExpired(timestampMs) {
@@ -391,6 +406,30 @@ function metricValue(status, path, arrayFind) {
   return node ? node.value : null;
 }
 
+// Ford's telemetry API always reports in these raw units regardless of vehicle
+// region — confirmed against ha-fordpass's unit handling (fordpass_handler.py),
+// the reference project this client is ported from — so "imperial" always means
+// converting away from these, never the other direction.
+function formatDistanceKm(km, units) {
+  if (km == null || typeof km !== "number") return null;
+  return units === "imperial" ? `${Math.round(km * 0.621371)} mi` : `${Math.round(km)} km`;
+}
+
+function formatTempC(c, units) {
+  if (c == null || typeof c !== "number") return null;
+  return units === "imperial" ? `${Math.round((c * 9) / 5 + 32)}°F` : `${Math.round(c)}°C`;
+}
+
+function formatPressureKpa(kpa, units) {
+  if (kpa == null || typeof kpa !== "number") return null;
+  return units === "imperial" ? `${(kpa * 0.145038).toFixed(1)} psi` : `${Math.round(kpa)} kPa`;
+}
+
+function formatPercent(v) {
+  if (v == null || typeof v !== "number") return null;
+  return `${Math.round(v)}%`;
+}
+
 // ===================== setup (interactive only — run the script, don't just add the widget) =====================
 
 async function promptText(title, message, placeholder, defaultValue) {
@@ -462,6 +501,7 @@ async function runMenu() {
   menu.addAction("Remote start");
   menu.addAction("Cancel remote start");
   menu.addAction("Request fresh report");
+  menu.addAction(`Units: ${loadUnits()} (tap to switch)`);
   menu.addAction("Re-run setup / change VIN or region");
   menu.addCancelAction("Close");
   const choice = await menu.presentSheet();
@@ -485,6 +525,13 @@ async function runMenu() {
       a.addAction("OK");
       await a.presentAlert();
     } else if (choice === 6) {
+      saveUnits(loadUnits() === "imperial" ? "metric" : "imperial");
+      const a = new Alert();
+      a.title = "Units updated";
+      a.message = `Now showing ${loadUnits()} units. Existing home-screen widgets will pick this up next refresh.`;
+      a.addAction("OK");
+      await a.presentAlert();
+    } else if (choice === 7) {
       await runSetup();
     }
   } catch (err) {
@@ -514,6 +561,7 @@ async function buildWidget() {
 
   const vin = loadVin();
   const region = loadRegion();
+  const units = loadUnits();
 
   if (!vin || !loadToken()) {
     const t = widget.addText("Open this script in Scriptable to finish setup.");
@@ -523,17 +571,45 @@ async function buildWidget() {
 
   try {
     const status = await getStatus(vin, REGIONS[region]);
-    const title = widget.addText("FordPass");
-    title.font = Font.boldSystemFont(14);
+    const compact = config.widgetFamily === "small";
+
+    const title = widget.addText(`FordPass (${units === "imperial" ? "mi/°F" : "km/°C"})`);
+    title.font = Font.boldSystemFont(13);
     widget.addSpacer(8);
 
-    const row = widget.addStack();
-    row.layoutHorizontally();
-    addTile(row, "DOORS", metricValue(status, "doorLockStatus", (d) => d.vehicleDoor === "ALL_DOORS"));
-    row.addSpacer(16);
-    addTile(row, "FUEL/CHARGE", metricValue(status, "fuelLevel") ?? metricValue(status, "xevBatteryStateOfCharge"));
-    row.addSpacer(16);
-    addTile(row, "ODOMETER", metricValue(status, "odometer"));
+    const isEv = metric(status, "xevBatteryStateOfCharge") != null;
+    const fuelOrCharge = formatPercent(
+      metricValue(status, "fuelLevel") ?? metricValue(status, "xevBatteryStateOfCharge")
+    );
+    const range = formatDistanceKm(
+      metricValue(status, "fuelRange") ?? metricValue(status, "xevBatteryRange"),
+      units
+    );
+    const odometer = formatDistanceKm(metricValue(status, "odometer"), units);
+    const outsideTemp = formatTempC(metricValue(status, "outsideTemp"), units);
+    const oilLife = formatPercent(metricValue(status, "oilLifeRemaining"));
+    const battery12v = formatPercent(metricValue(status, "batteryStateOfCharge"));
+
+    const row1 = widget.addStack();
+    row1.layoutHorizontally();
+    addTile(row1, "DOORS", metricValue(status, "doorLockStatus", (d) => d.vehicleDoor === "ALL_DOORS"));
+    row1.addSpacer(16);
+    addTile(row1, isEv ? "CHARGE" : "FUEL", fuelOrCharge);
+    if (!compact) {
+      row1.addSpacer(16);
+      addTile(row1, "RANGE", range);
+    }
+
+    if (!compact) {
+      widget.addSpacer(10);
+      const row2 = widget.addStack();
+      row2.layoutHorizontally();
+      addTile(row2, "ODOMETER", odometer);
+      row2.addSpacer(16);
+      addTile(row2, "OUTSIDE", outsideTemp);
+      row2.addSpacer(16);
+      addTile(row2, isEv ? "12V BATT" : "OIL LIFE", isEv ? battery12v : oilLife ?? battery12v);
+    }
 
     widget.addSpacer(8);
     const updatedAt = metric(status, "doorLockStatus.0.updateTime") || metric(status, "odometer.updateTime");
