@@ -54,14 +54,31 @@ anywhere; they live only in Scriptable's on-device `Keychain`.
    pick this script.
 
 Running the script again later (instead of just viewing the widget) opens a menu: refresh
-status, lock, unlock, remote start, cancel remote start, request a fresh report, switch units,
-or re-run setup (to change your VIN/region or sign in again).
+status, lock, unlock, remote start, cancel remote start, request a fresh report, configure the
+widget (see below), or re-run setup (to change your VIN/region or sign in again).
 
 ## Configuring a widget
 
-Each widget instance can be configured independently through its Parameter field: long-press the
-widget → Edit Widget → Parameter. It's a single text field, used as a comma-separated list
-mixing two kinds of tokens — order doesn't matter except for tile order:
+Each widget instance can show a different set of tiles, via its Parameter field (long-press the
+widget → Edit Widget → Parameter) — a comma-separated list of tile names (`doors`, `fuel`,
+`range`, `odometer`, `temp`, `oil12v`) plus an optional `imperial`/`metric` override, e.g.
+`doors,fuel,odometer,metric`. See the full explanation and defaults in the next section — but
+you don't have to type this by hand:
+
+Run the script (tap it, don't just view the widget) → **Configure widget (tiles & units)**
+opens a checklist: tap a row to toggle that tile on/off, tap Units to flip imperial/metric, then
+either:
+
+- **Save as default for blank-parameter widgets** — applies to every widget whose Parameter
+  field is empty (the common case if you only have one widget).
+- **Copy as Parameter text for one specific widget** — puts the right string on your clipboard
+  to paste into one widget's Parameter field, for when you want that one to differ from the
+  default (e.g. a small widget with just `doors,fuel` next to a large one with everything).
+
+## Parameter field reference
+
+A widget's Parameter field is a single text field, used as a comma-separated list mixing two
+kinds of tokens — order doesn't matter except for tile order:
 
 - Tile names, in the order you want them shown: `doors`, `fuel` (fuel level or EV charge %),
   `range`, `odometer`, `temp` (outside temp), `oil12v` (oil life, or 12V battery for EVs).
@@ -69,9 +86,10 @@ mixing two kinds of tokens — order doesn't matter except for tile order:
   preference (see Units below).
 
 Example: `doors,fuel,odometer,metric` shows exactly those three tiles, in that order, in
-metric. Leave it blank to get the default set (small widgets show just doors + fuel; medium and
-large show all six tiles). An unrecognized token is silently ignored rather than erroring, so a
-typo just falls back to the default rather than breaking the widget.
+metric. Leave it blank to get the saved default (configured as above), or — if you've never
+opened the configurator — the built-in default (small widgets show just doors + fuel; medium
+and large show all six tiles). An unrecognized token is silently ignored rather than erroring,
+so a typo just falls back to the default rather than breaking the widget.
 
 ## Units
 

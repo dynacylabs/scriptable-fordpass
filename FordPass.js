@@ -73,6 +73,7 @@ const KEYCHAIN_TOKEN_KEY = "fordconnect_fordpass_token";
 const KEYCHAIN_VIN_KEY = "fordconnect_vin";
 const KEYCHAIN_REGION_KEY = "fordconnect_region";
 const KEYCHAIN_UNITS_KEY = "fordconnect_units";
+const KEYCHAIN_DEFAULT_TILES_KEY = "fordconnect_default_tiles";
 const EXPIRY_SKEW_MS = 60 * 1000;
 
 // ===================== small helpers (no Web APIs in Scriptable's JS runtime) =====================
@@ -189,6 +190,22 @@ function loadUnits() {
 
 function saveUnits(units) {
   Keychain.set(KEYCHAIN_UNITS_KEY, units);
+}
+
+// The default tile set used by any widget whose own Parameter field is blank — set via
+// the in-script "Configure widget" picker rather than typed by hand. null means "no
+// preference saved yet", so buildWidget falls back to its own small/full defaults.
+function loadDefaultTiles() {
+  if (!Keychain.contains(KEYCHAIN_DEFAULT_TILES_KEY)) return null;
+  const tiles = Keychain.get(KEYCHAIN_DEFAULT_TILES_KEY)
+    .split(",")
+    .map((s) => s.trim())
+    .filter((t) => TILE_DEFS[t]);
+  return tiles.length ? tiles : null;
+}
+
+function saveDefaultTiles(tiles) {
+  Keychain.set(KEYCHAIN_DEFAULT_TILES_KEY, tiles.join(","));
 }
 
 function isExpired(timestampMs) {
@@ -495,7 +512,7 @@ async function runMenu() {
   menu.addAction("Remote start");
   menu.addAction("Cancel remote start");
   menu.addAction("Request fresh report");
-  menu.addAction(`Units: ${loadUnits()} (tap to switch)`);
+  menu.addAction("Configure widget (tiles & units)");
   menu.addAction("Re-run setup / change VIN or region");
   menu.addCancelAction("Close");
   const choice = await menu.presentSheet();
@@ -519,12 +536,7 @@ async function runMenu() {
       a.addAction("OK");
       await a.presentAlert();
     } else if (choice === 6) {
-      saveUnits(loadUnits() === "imperial" ? "metric" : "imperial");
-      const a = new Alert();
-      a.title = "Units updated";
-      a.message = `Now showing ${loadUnits()} units. Existing home-screen widgets will pick this up next refresh.`;
-      a.addAction("OK");
-      await a.presentAlert();
+      await runTileConfigurator();
     } else if (choice === 7) {
       await runSetup();
     }
@@ -606,6 +618,83 @@ function parseWidgetParameter(paramStr) {
   return { units, tiles: tiles.length ? tiles : null };
 }
 
+// Interactive picker (run the script, not from a widget) so the Parameter mini-language
+// doesn't have to be typed from memory. Lets you either save a default tile set used by
+// any widget with a blank Parameter field, or copy a ready-made Parameter string to
+// paste into one specific widget that should differ from the default.
+async function runTileConfigurator() {
+  const orderedTileKeys = Object.keys(TILE_DEFS);
+  const selected = new Set(loadDefaultTiles() || DEFAULT_TILES_FULL);
+  let units = loadUnits();
+
+  const table = new UITable();
+  table.showSeparators = true;
+
+  function selectedInOrder() {
+    return orderedTileKeys.filter((k) => selected.has(k));
+  }
+
+  function render() {
+    table.removeAllRows();
+
+    const header = new UITableRow();
+    header.isHeader = true;
+    header.addText("Tap a row to toggle it, then save or copy below.");
+    table.addRow(header);
+
+    const unitsRow = new UITableRow();
+    unitsRow.dismissOnSelect = false;
+    unitsRow.addText("Units", units === "imperial" ? "imperial (mi / °F / psi)" : "metric (km / °C / kPa)");
+    unitsRow.onSelect = () => {
+      units = units === "imperial" ? "metric" : "imperial";
+      render();
+    };
+    table.addRow(unitsRow);
+
+    for (const key of orderedTileKeys) {
+      const row = new UITableRow();
+      row.dismissOnSelect = false;
+      const label = TILE_DEFS[key].label(false);
+      row.addText(selected.has(key) ? `✓  ${label}` : `　  ${label}`);
+      row.onSelect = () => {
+        if (selected.has(key)) selected.delete(key);
+        else selected.add(key);
+        render();
+      };
+      table.addRow(row);
+    }
+
+    const saveRow = new UITableRow();
+    const saveBtn = saveRow.addButton("Save as default for blank-parameter widgets");
+    saveBtn.onTap = async () => {
+      saveDefaultTiles(selectedInOrder());
+      saveUnits(units);
+      const a = new Alert();
+      a.title = "Saved";
+      a.message = "Widgets with a blank Parameter field will use this set next refresh.";
+      a.addAction("OK");
+      await a.presentAlert();
+    };
+    table.addRow(saveRow);
+
+    const copyRow = new UITableRow();
+    const copyBtn = copyRow.addButton("Copy as Parameter text for one specific widget");
+    copyBtn.onTap = async () => {
+      const paramStr = [...selectedInOrder(), units].join(",");
+      Pasteboard.copyString(paramStr);
+      const a = new Alert();
+      a.title = "Copied";
+      a.message = `"${paramStr}" is on your clipboard — paste it into that widget's Parameter field (long-press the widget → Edit Widget).`;
+      a.addAction("OK");
+      await a.presentAlert();
+    };
+    table.addRow(copyRow);
+  }
+
+  render();
+  await table.present(false);
+}
+
 async function buildWidget() {
   const widget = new ListWidget();
   widget.backgroundColor = Color.dynamic(new Color("#ffffff"), new Color("#1c1f26"));
@@ -622,7 +711,7 @@ async function buildWidget() {
   const paramCfg = parseWidgetParameter(args.widgetParameter);
   const units = paramCfg.units || loadUnits();
   const compact = config.widgetFamily === "small";
-  const tileKeys = paramCfg.tiles || (compact ? DEFAULT_TILES_SMALL : DEFAULT_TILES_FULL);
+  const tileKeys = paramCfg.tiles || loadDefaultTiles() || (compact ? DEFAULT_TILES_SMALL : DEFAULT_TILES_FULL);
 
   try {
     const status = await getStatus(vin, REGIONS[region]);
