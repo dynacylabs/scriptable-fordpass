@@ -194,8 +194,7 @@ function saveUnits(units) {
   Keychain.set(KEYCHAIN_UNITS_KEY, units);
 }
 
-// "fordpass" (the literal word), "nickname" (your vehicle's name, e.g. "Cletus"), or
-// "hidden" (no header at all).
+// "fordpass" (the literal word) or "hidden" (no header at all).
 function loadTitleMode() {
   return Keychain.contains(KEYCHAIN_TITLE_MODE_KEY) ? Keychain.get(KEYCHAIN_TITLE_MODE_KEY) : "fordpass";
 }
@@ -677,7 +676,7 @@ function renderDoorsVerbose(widget, status, region) {
   }
 }
 
-// ===================== vehicle garage data (image, nickname) =====================
+// ===================== vehicle garage data (image) =====================
 //
 // Ford's FordPass-private garage endpoint returns a per-vehicle object including a
 // ready-made image URL, and needs no new auth — just our existing access_token, via a
@@ -746,27 +745,6 @@ async function fetchVehicleImage(token, vin, regionCfg) {
     // No bundled placeholder — the image block is just skipped on failure.
   }
   return null;
-}
-
-// Field name is a guess (checked several plausible candidates) — ha-fordpass doesn't
-// reference a nickname anywhere, so unlike the image this one has no reference
-// implementation to confirm against. Needs live verification; see Status in the README.
-function extractNickname(vehicle) {
-  if (!vehicle) return null;
-  const candidates = [
-    vehicle.nickName,
-    vehicle.nickname,
-    vehicle.profile && vehicle.profile.nickName,
-    vehicle.profile && vehicle.profile.nickname,
-    vehicle.profile && vehicle.profile.vehicleNickname,
-    vehicle.profile && vehicle.profile.name,
-  ];
-  return candidates.find((v) => typeof v === "string" && v.trim().length > 0) || null;
-}
-
-async function fetchVehicleNickname(token, vin, regionCfg) {
-  const vehicle = await fetchGarageVehicle(token, vin, regionCfg);
-  return extractNickname(vehicle);
 }
 
 // ListWidget has a fixed pixel canvas per family and doesn't scroll — content past the
@@ -860,7 +838,6 @@ function parseWidgetParameter(paramStr) {
   const items = [];
   for (const t of tokens) {
     if (t === "imperial" || t === "metric") units = t;
-    else if (t === "nickname") titleMode = "nickname";
     else if (t === "notitle") titleMode = "hidden";
     else if (TILE_DEFS[t] || BLOCK_DEFS[t]) items.push(t);
   }
@@ -876,8 +853,8 @@ async function runTileConfigurator() {
   const selected = new Set(loadDefaultTiles() || DEFAULT_TILES_FULL);
   let units = loadUnits();
   let titleMode = loadTitleMode();
-  const TITLE_MODE_LABELS = { fordpass: '"FordPass"', nickname: "vehicle nickname", hidden: "hidden" };
-  const TITLE_MODE_CYCLE = ["fordpass", "nickname", "hidden"];
+  const TITLE_MODE_LABELS = { fordpass: '"FordPass"', hidden: "hidden" };
+  const TITLE_MODE_CYCLE = ["fordpass", "hidden"];
 
   const table = new UITable();
   table.showSeparators = true;
@@ -943,7 +920,7 @@ async function runTileConfigurator() {
     const copyRow = new UITableRow();
     const copyBtn = copyRow.addButton("Copy as Parameter text for one specific widget");
     copyBtn.onTap = async () => {
-      const titleToken = titleMode === "nickname" ? "nickname" : titleMode === "hidden" ? "notitle" : null;
+      const titleToken = titleMode === "hidden" ? "notitle" : null;
       const paramStr = [...selectedInOrder(), units, titleToken].filter(Boolean).join(",");
       Pasteboard.copyString(paramStr);
       const a = new Alert();
@@ -983,12 +960,7 @@ async function buildWidget() {
     const status = await getStatus(vin, REGIONS[region]);
 
     if (titleMode !== "hidden") {
-      let titleText = "FordPass";
-      if (titleMode === "nickname") {
-        const token = await getValidToken(REGIONS[region]);
-        titleText = (await fetchVehicleNickname(token, vin, REGIONS[region])) || "FordPass";
-      }
-      const title = widget.addText(titleText);
+      const title = widget.addText("FordPass");
       title.font = Font.boldSystemFont(13);
       widget.addSpacer(8);
     }
