@@ -1047,6 +1047,48 @@ function renderWindowsVerbose(widget, status, region) {
   addWindowCell(row2, grid.rear.right.label, grid.rear.right.value);
 }
 
+// ===================== seat belts =====================
+//
+// Confirmed live: "seatBeltStatus" is an array keyed by vehicleOccupantRole
+// (DRIVER/PASSENGER seen; rear roles unconfirmed, not shown by this vehicle), each
+// entry a plain value of "BUCKLED"/"UNBUCKLED" -- no per-door/per-side geometry like
+// doors/windows, so this renders as a simple role->status list sized to whatever
+// entries the vehicle actually reports instead of a fixed grid.
+function seatBeltSummaryText(status) {
+  const belts = metricArray(status, "seatBeltStatus");
+  if (belts.length === 0) return null;
+  const unbuckled = belts.filter((b) => b.value === "UNBUCKLED");
+  return unbuckled.length === 0 ? "OK" : `${unbuckled.length} UNBUCKLED`;
+}
+
+function renderSeatBeltVerbose(widget, status) {
+  const belts = metricArray(status, "seatBeltStatus");
+
+  const title = widget.addText("SEAT BELTS");
+  title.font = Font.systemFont(10);
+  title.textColor = Color.gray();
+  widget.addSpacer(3);
+
+  if (belts.length === 0) {
+    const t = widget.addText("No data");
+    t.font = Font.systemFont(11);
+    t.textColor = Color.gray();
+    return;
+  }
+
+  for (const belt of belts) {
+    const row = widget.addStack();
+    row.layoutHorizontally();
+    const label = row.addText(humanizeStatus(belt.vehicleOccupantRole || "UNKNOWN"));
+    label.font = Font.systemFont(11);
+    row.addSpacer();
+    const value = row.addText(humanizeStatus(belt.value || ""));
+    value.font = Font.boldSystemFont(11);
+    if (belt.value === "UNBUCKLED") value.textColor = Color.orange();
+    widget.addSpacer(4);
+  }
+}
+
 // ===================== vehicle health alerts =====================
 //
 // Confirmed live: "metrics.indicators" (not a top-level "messages" field, which
@@ -1434,6 +1476,18 @@ const TILE_DEFS = {
     // was verified against, meaning of the difference between the two unconfirmed.
     value: (status, units) => formatTempC(metricValue(status, "ambientTemp"), units),
   },
+  seatBelt: {
+    label: () => "SEAT BELTS",
+    value: (status) => seatBeltSummaryText(status),
+  },
+  xevPlugCharger: {
+    label: () => "PLUG",
+    // Confirmed live this field is present and reports "CONNECTED" even on this
+    // non-plug-in ICE F-150 -- there's no physical charge plug on this vehicle, so
+    // what the value means here (vs. on an actual EV/PHEV) is unconfirmed. Shown
+    // as-is; this is opt-in, so no harm in exposing an unclear field.
+    value: (status) => metricValue(status, "xevPlugChargerStatus"),
+  },
 };
 
 const DEFAULT_TILES_SMALL = ["doors", "fuel"];
@@ -1464,6 +1518,10 @@ const BLOCK_DEFS = {
   healthVerbose: {
     label: () => "VEHICLE HEALTH (VERBOSE)",
     render: async (widget, status) => renderHealthAlertsVerbose(widget, status),
+  },
+  seatBeltVerbose: {
+    label: () => "SEAT BELTS (VERBOSE)",
+    render: async (widget, status) => renderSeatBeltVerbose(widget, status),
   },
   location: {
     label: () => "LOCATION",

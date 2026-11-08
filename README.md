@@ -177,7 +177,9 @@ kinds of tokens — order doesn't matter except for item order:
   individual warning lights (check engine, low oil pressure, TPMS fault, etc.) are active,
   `hood` (e.g. "CLOSED"), `parkingBrake` (e.g. "OFF"), `remoteStartTimer` — "OFF", or minutes
   remaining during an active remote start, `ambientTemp` — a second temperature reading,
-  distinct from `temp` (see Status below for what's unconfirmed about it).
+  distinct from `temp` (see Status below for what's unconfirmed about it), `seatBelt` — "OK",
+  or "N UNBUCKLED" if any occupant's belt is unbuckled, `xevPlugCharger` — Ford's raw plug
+  state (see Status below for why this is unconfirmed on a non-plug-in vehicle).
 - Full-width block names, each always on its own row: `doorsVerbose` — an alternative to
   `doors`, a 2×2 table (front driver/passenger side correctly placed per your region's driving
   side, rear left/right, plus a tailgate row if present). `tiresVerbose` — an alternative to
@@ -187,10 +189,13 @@ kinds of tokens — order doesn't matter except for item order:
   alternative to `windows`, the same 2×2 layout as `doorsVerbose` (front driver/passenger per
   region, rear left/right), each cell OPEN (orange) or CLOSED. `healthVerbose` — an alternative
   to `health`: "No active alerts", or the full list of currently-active warning lights by name,
-  in orange. `location` — last known coordinates plus compass direction, tappable to open Apple
-  Maps on medium/large widgets (small widgets show it as plain text — their only tap target is
-  the whole widget, which already opens this script's menu). `commands` — Lock/Unlock/Start/Stop/
-  Refresh buttons, medium/large widgets only; tapping one opens the app to a confirm/cancel
+  in orange. `seatBeltVerbose` — an alternative to `seatBelt`: each occupant role (driver,
+  passenger — rear roles unconfirmed, not shown by this vehicle) and its buckled/unbuckled
+  state, in orange when unbuckled. `location` — last known coordinates plus compass direction,
+  tappable to open Apple Maps on medium/large widgets (small widgets show it as plain text —
+  their only tap target is the whole widget, which already opens this script's menu).
+  `commands` — Lock/Unlock/Start/Stop/Refresh buttons, medium/large widgets only; tapping one
+  opens the app to a confirm/cancel
   dialog before anything actually sends, so a stray tap can't fire a real command (see Write
   commands below). `image` — the vehicle's photo, as shown in the real FordPass app.
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
@@ -326,3 +331,15 @@ the earlier live remote-start test (900 right after a successful start, i.e. For
 window) — shown as minutes, "OFF" when 0. `ambientTemp` itself reads 0.0°C/32°F on this vehicle
 right now, clearly distinct from `outsideTemperature`'s 9.25°C — but *what* makes them different
 (cabin vs. engine-bay sensor, or something else) isn't confirmed; shown as-is either way.
+
+`seatBelt`/`seatBeltVerbose` are confirmed live: `seatBeltStatus` is an array of
+`{value, vehicleOccupantRole}` entries (`PASSENGER: UNBUCKLED` seen on this vehicle at the time
+of testing), unlike doors/windows/tires it carries no door-side geometry, so the verbose view
+lists whatever occupant roles the vehicle actually reports rather than a fixed grid — this
+vehicle has never reported a rear entry, so rear belts are unconfirmed.
+
+`xevPlugCharger` is confirmed present and live, but its value is suspect: it reads "CONNECTED"
+on this vehicle, which is a non-plug-in ICE F-150 with no charge port at all. Either Ford
+returns a meaningless default for this field on vehicles it doesn't apply to, or it means
+something else entirely here — unconfirmed either way. Shown as-is (opt-in) since it should be
+meaningful for plug-in hybrid/EV owners even though it clearly isn't here.
