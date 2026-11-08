@@ -84,7 +84,8 @@ kinds of tokens — order doesn't matter except for item order:
   `doors` (collapsed, one line), `fuel` (fuel level or EV charge %), `range`, `odometer`,
   `temp` (outside temp), `oil` (oil life, ICE only), `battery12v` (12V battery), `tires` — a
   one-word summary ("OK", or e.g. "1 Low" / "2 issues") of Ford's own per-wheel verdict,
-  `windows` — "CLOSED", "OPEN", or e.g. "1 OPEN" if some but not all are open.
+  `windows` — "CLOSED", "OPEN", or e.g. "1 OPEN" if some but not all are open, `alarm` (e.g.
+  "DISARMED"), `ignition` (e.g. "OFF").
 - Full-width block names, each always on its own row: `doorsVerbose` — an alternative to
   `doors`, a 2×2 table (front driver/passenger side correctly placed per your region's driving
   side, rear left/right, plus a tailgate row if present). `tiresVerbose` — an alternative to
@@ -136,7 +137,10 @@ only ever reports front windows; `REAR_LEFT`/`REAR_RIGHT` naming for a vehicle t
 rear windows is an unconfirmed guess mirroring the (confirmed) door naming. If `doorsVerbose` or
 `windowsVerbose` still appear to show nothing on a given widget, that's more likely the widget's
 fixed, non-scrolling canvas clipping content than a logic bug; try it with fewer other items in
-the same widget first.
+the same widget first. `alarm` and `ignition` are confirmed too (`alarmStatus.value`:
+"DISARMED"; `ignitionStatus.value`: "OFF" on this vehicle, both plain single-value objects
+rather than arrays — only other states, like "ARMED" or "ON"/"RUN", aren't something this
+vehicle has been caught in yet to confirm the exact wording of).
 
 The raw metric key names used for range, outside temp, oil life, and 12V battery come from
 [ha-fordpass](https://github.com/marq24/ha-fordpass)'s own field mapping, not yet cross-checked

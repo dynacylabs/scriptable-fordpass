@@ -977,6 +977,14 @@ const TILE_DEFS = {
     label: () => "WINDOWS",
     value: (status) => windowSummaryText(status),
   },
+  alarm: {
+    label: () => "ALARM",
+    value: (status) => metricValue(status, "alarmStatus"),
+  },
+  ignition: {
+    label: () => "IGNITION",
+    value: (status) => metricValue(status, "ignitionStatus"),
+  },
 };
 
 const DEFAULT_TILES_SMALL = ["doors", "fuel"];
