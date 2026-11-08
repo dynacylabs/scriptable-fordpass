@@ -57,16 +57,28 @@ Running the script again later (instead of just viewing the widget) opens a menu
 status, lock, unlock, remote start, cancel remote start, request a fresh report, switch units,
 or re-run setup (to change your VIN/region or sign in again).
 
+## Configuring a widget
+
+Each widget instance can be configured independently through its Parameter field: long-press the
+widget → Edit Widget → Parameter. It's a single text field, used as a comma-separated list
+mixing two kinds of tokens — order doesn't matter except for tile order:
+
+- Tile names, in the order you want them shown: `doors`, `fuel` (fuel level or EV charge %),
+  `range`, `odometer`, `temp` (outside temp), `oil12v` (oil life, or 12V battery for EVs).
+- `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
+  preference (see Units below).
+
+Example: `doors,fuel,odometer,metric` shows exactly those three tiles, in that order, in
+metric. Leave it blank to get the default set (small widgets show just doors + fuel; medium and
+large show all six tiles). An unrecognized token is silently ignored rather than erroring, so a
+typo just falls back to the default rather than breaking the widget.
+
 ## Units
 
 Ford's API always reports raw values in metric (km, °C, kPa) regardless of your vehicle's
 region. The script defaults to converting these to imperial (mi, °F, psi) for display; switch to
 metric from the in-script menu ("Units: ... (tap to switch)") — the preference is saved and
-applies to every widget using this script.
-
-A single widget can also be pinned to a specific unit system regardless of that saved
-preference: long-press the widget → Edit Widget → set the Parameter field to `imperial` or
-`metric`.
+applies to every widget using this script, unless overridden per-widget as described above.
 
 Fuel level, EV charge, oil life, and 12V battery are already percentages in Ford's API — no
 conversion applies to those.

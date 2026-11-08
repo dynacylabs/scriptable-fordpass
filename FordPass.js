@@ -183,13 +183,7 @@ function loadRegion() {
   return Keychain.contains(KEYCHAIN_REGION_KEY) ? Keychain.get(KEYCHAIN_REGION_KEY) : "usa";
 }
 
-// A widget's own "Parameter" field (long-press widget -> Edit Widget) overrides the
-// saved preference for that widget instance, if it's set to "imperial" or "metric".
 function loadUnits() {
-  if (config.runsInWidget && args.widgetParameter) {
-    const p = String(args.widgetParameter).trim().toLowerCase();
-    if (p === "imperial" || p === "metric") return p;
-  }
   return Keychain.contains(KEYCHAIN_UNITS_KEY) ? Keychain.get(KEYCHAIN_UNITS_KEY) : "imperial";
 }
 
@@ -555,13 +549,69 @@ function addTile(stack, label, value) {
   v.font = Font.boldSystemFont(15);
 }
 
+// Each tile is keyed by the token a widget's Parameter field uses to request it (see
+// parseWidgetParameter). label/value may depend on units and whether the vehicle is
+// an EV (fuelLevel vs. xevBatteryStateOfCharge, oil life vs. 12V battery).
+const TILE_DEFS = {
+  doors: {
+    label: () => "DOORS",
+    value: (status) => metricValue(status, "doorLockStatus", (d) => d.vehicleDoor === "ALL_DOORS"),
+  },
+  fuel: {
+    label: (isEv) => (isEv ? "CHARGE" : "FUEL"),
+    value: (status) => formatPercent(metricValue(status, "fuelLevel") ?? metricValue(status, "xevBatteryStateOfCharge")),
+  },
+  range: {
+    label: () => "RANGE",
+    value: (status, units) =>
+      formatDistanceKm(metricValue(status, "fuelRange") ?? metricValue(status, "xevBatteryRange"), units),
+  },
+  odometer: {
+    label: () => "ODOMETER",
+    value: (status, units) => formatDistanceKm(metricValue(status, "odometer"), units),
+  },
+  temp: {
+    label: () => "OUTSIDE",
+    value: (status, units) => formatTempC(metricValue(status, "outsideTemp"), units),
+  },
+  oil12v: {
+    label: (isEv) => (isEv ? "12V BATT" : "OIL LIFE"),
+    value: (status, units, isEv) =>
+      isEv
+        ? formatPercent(metricValue(status, "batteryStateOfCharge"))
+        : formatPercent(metricValue(status, "oilLifeRemaining")) ?? formatPercent(metricValue(status, "batteryStateOfCharge")),
+  },
+};
+
+const DEFAULT_TILES_SMALL = ["doors", "fuel"];
+const DEFAULT_TILES_FULL = ["doors", "fuel", "range", "odometer", "temp", "oil12v"];
+const TILES_PER_ROW = 3;
+
+// A widget's own "Parameter" field (long-press widget -> Edit Widget) is a single text
+// field, so it doubles as a tiny config language: a comma-separated list mixing tile
+// names (see TILE_DEFS) with "imperial"/"metric". Order of tile names controls display
+// order. Unrecognized tokens are ignored rather than erroring, so a typo just falls
+// back to defaults instead of breaking the widget. Example: "doors,fuel,odometer,metric".
+function parseWidgetParameter(paramStr) {
+  const tokens = String(paramStr || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  let units = null;
+  const tiles = [];
+  for (const t of tokens) {
+    if (t === "imperial" || t === "metric") units = t;
+    else if (TILE_DEFS[t]) tiles.push(t);
+  }
+  return { units, tiles: tiles.length ? tiles : null };
+}
+
 async function buildWidget() {
   const widget = new ListWidget();
   widget.backgroundColor = Color.dynamic(new Color("#ffffff"), new Color("#1c1f26"));
 
   const vin = loadVin();
   const region = loadRegion();
-  const units = loadUnits();
 
   if (!vin || !loadToken()) {
     const t = widget.addText("Open this script in Scriptable to finish setup.");
@@ -569,46 +619,30 @@ async function buildWidget() {
     return widget;
   }
 
+  const paramCfg = parseWidgetParameter(args.widgetParameter);
+  const units = paramCfg.units || loadUnits();
+  const compact = config.widgetFamily === "small";
+  const tileKeys = paramCfg.tiles || (compact ? DEFAULT_TILES_SMALL : DEFAULT_TILES_FULL);
+
   try {
     const status = await getStatus(vin, REGIONS[region]);
-    const compact = config.widgetFamily === "small";
 
     const title = widget.addText("FordPass");
     title.font = Font.boldSystemFont(13);
     widget.addSpacer(8);
 
     const isEv = metric(status, "xevBatteryStateOfCharge") != null;
-    const fuelOrCharge = formatPercent(
-      metricValue(status, "fuelLevel") ?? metricValue(status, "xevBatteryStateOfCharge")
-    );
-    const range = formatDistanceKm(
-      metricValue(status, "fuelRange") ?? metricValue(status, "xevBatteryRange"),
-      units
-    );
-    const odometer = formatDistanceKm(metricValue(status, "odometer"), units);
-    const outsideTemp = formatTempC(metricValue(status, "outsideTemp"), units);
-    const oilLife = formatPercent(metricValue(status, "oilLifeRemaining"));
-    const battery12v = formatPercent(metricValue(status, "batteryStateOfCharge"));
 
-    const row1 = widget.addStack();
-    row1.layoutHorizontally();
-    addTile(row1, "DOORS", metricValue(status, "doorLockStatus", (d) => d.vehicleDoor === "ALL_DOORS"));
-    row1.addSpacer(16);
-    addTile(row1, isEv ? "CHARGE" : "FUEL", fuelOrCharge);
-    if (!compact) {
-      row1.addSpacer(16);
-      addTile(row1, "RANGE", range);
-    }
-
-    if (!compact) {
-      widget.addSpacer(10);
-      const row2 = widget.addStack();
-      row2.layoutHorizontally();
-      addTile(row2, "ODOMETER", odometer);
-      row2.addSpacer(16);
-      addTile(row2, "OUTSIDE", outsideTemp);
-      row2.addSpacer(16);
-      addTile(row2, isEv ? "12V BATT" : "OIL LIFE", isEv ? battery12v : oilLife ?? battery12v);
+    for (let i = 0; i < tileKeys.length; i += TILES_PER_ROW) {
+      if (i > 0) widget.addSpacer(10);
+      const rowKeys = tileKeys.slice(i, i + TILES_PER_ROW);
+      const row = widget.addStack();
+      row.layoutHorizontally();
+      rowKeys.forEach((key, idx) => {
+        const def = TILE_DEFS[key];
+        addTile(row, def.label(isEv), def.value(status, units, isEv));
+        if (idx < rowKeys.length - 1) row.addSpacer(16);
+      });
     }
 
     widget.addSpacer(8);
