@@ -74,6 +74,27 @@ fresh report. Two ways to send one:
 Commands are fire-and-forget — Ford confirms receipt, not that the vehicle executed it. Re-check
 the dashboard (or `fuel`/`tires`/etc.) a few seconds later to see it take effect.
 
+### Returning to the home screen after a command
+
+After a `commands` widget button sends successfully, the script tries to land you back on the
+home screen instead of leaving you sitting in Scriptable — but no third-party app, Scriptable
+included, is allowed to do that by itself; Apple doesn't expose that API. The only real way
+around it: hand off to a Shortcut that does nothing but Apple's own "Go to Home Screen" action,
+which *is* allowed to exit to the home screen.
+
+One-time setup (optional — if you skip this, commands still send fine, you'll just end up
+looking at the Shortcuts app afterward instead of your home screen):
+
+1. Open the **Shortcuts** app → **+** (new shortcut).
+2. Add Action → search for **"Go to Home Screen"** → add it. It should be the only action in
+   the shortcut.
+3. Rename the shortcut to exactly **`Go Home`** (tap the shortcut's name/settings at the top).
+4. Done — no need to add it to your home screen or run it manually.
+
+If you'd rather use a different name, change `GO_HOME_SHORTCUT_NAME` near the top of
+`runCommandFromWidget()` in the script to match. Errors still show a dialog instead of going
+home — that's actionable information, not just confirmation noise, so it's not suppressed.
+
 ## Configuring a widget
 
 Each widget instance can show a different set of tiles, via its Parameter field (long-press the
@@ -221,3 +242,9 @@ confirm-dialog → send round-trip specifically needs a real tap on a real devic
 behaves as documented. Unlike tap-to-detail, this one was kept rather than reverted on the same
 app-switch grounds, since sending a command is a deliberate action rather than passive viewing,
 and the added confirm step means a stray tap can only open a dialog, not fire anything.
+
+The go-home handoff (`Safari.open("shortcuts://run-shortcut?name=...")` after a successful
+send) is a well-established community pattern for this exact problem, not something invented
+here, but it's equally unverified live for the same reason — needs a real device with the "Go
+Home" shortcut actually created to confirm it lands cleanly on the home screen rather than
+stalling on the Shortcuts app.

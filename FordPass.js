@@ -977,6 +977,12 @@ function renderCommands(widget) {
   }
 }
 
+// Name of a Shortcut (created by you in the Shortcuts app) containing nothing but
+// Apple's own "Go to Home Screen" action — see the README for setup. Triggering it via
+// URL is the only way to land back on the home screen after a command sends; Apple
+// deliberately doesn't let any third-party app (Scriptable included) do that itself.
+const GO_HOME_SHORTCUT_NAME = "Go Home";
+
 async function runCommandFromWidget(cmdKey) {
   const def = WRITE_COMMANDS[cmdKey];
   if (!def) return;
@@ -992,17 +998,19 @@ async function runCommandFromWidget(cmdKey) {
   confirm.addCancelAction("Cancel");
   if ((await confirm.presentAlert()) === -1) return;
 
-  const a = new Alert();
   try {
     await sendCommand(vin, REGIONS[region], def.apiType);
-    a.title = "Sent";
-    a.message = `${def.label} command sent — commands are fire-and-forget, check status again in a few seconds.`;
+    // Success: skip the "Sent" popup and go straight home instead of leaving the user
+    // sitting in Scriptable. Errors still get a dialog -- that's actionable information,
+    // not just confirmation noise.
+    Safari.open(`shortcuts://run-shortcut?name=${encodeURIComponent(GO_HOME_SHORTCUT_NAME)}`);
   } catch (err) {
+    const a = new Alert();
     a.title = "Error";
     a.message = String(err);
+    a.addAction("OK");
+    await a.presentAlert();
   }
-  a.addAction("OK");
-  await a.presentAlert();
 }
 
 // ===================== vehicle garage data (image) =====================
