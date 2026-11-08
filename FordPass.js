@@ -76,6 +76,7 @@ const KEYCHAIN_REGION_KEY = "fordconnect_region";
 const KEYCHAIN_UNITS_KEY = "fordconnect_units";
 const KEYCHAIN_DEFAULT_TILES_KEY = "fordconnect_default_tiles";
 const KEYCHAIN_TITLE_MODE_KEY = "fordconnect_title_mode";
+const KEYCHAIN_MAP_PROVIDER_KEY = "fordconnect_map_provider";
 const EXPIRY_SKEW_MS = 60 * 1000;
 
 // ===================== small helpers (no Web APIs in Scriptable's JS runtime) =====================
@@ -201,6 +202,15 @@ function loadTitleMode() {
 
 function saveTitleMode(mode) {
   Keychain.set(KEYCHAIN_TITLE_MODE_KEY, mode);
+}
+
+// "apple" or "google" -- which maps app the location block's link opens.
+function loadMapProvider() {
+  return Keychain.contains(KEYCHAIN_MAP_PROVIDER_KEY) ? Keychain.get(KEYCHAIN_MAP_PROVIDER_KEY) : "apple";
+}
+
+function saveMapProvider(provider) {
+  Keychain.set(KEYCHAIN_MAP_PROVIDER_KEY, provider);
 }
 
 // The default item set (tiles and/or full-width blocks) used by any widget whose own
@@ -894,7 +904,13 @@ function renderHealthAlertsVerbose(widget, status) {
 // only supported on medium/large widgets per Scriptable's docs — a small widget's only
 // tap target is the whole widget itself, which already opens this script's menu, so
 // this just renders as plain (non-tappable) text there instead of fighting that.
-function renderLocation(widget, status) {
+function mapsUrl(provider, lat, lon) {
+  return provider === "google"
+    ? `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`
+    : `https://maps.apple.com/?ll=${lat},${lon}&q=Vehicle`;
+}
+
+function renderLocation(widget, status, mapProvider) {
   const loc = metric(status, "position.value.location");
   if (!loc || loc.lat == null || loc.lon == null) return;
 
@@ -908,7 +924,7 @@ function renderLocation(widget, status) {
   const text = widget.addText(direction ? `${coords} (${direction.toLowerCase()})` : coords);
   text.font = Font.boldSystemFont(12);
   if (config.widgetFamily !== "small") {
-    text.url = `https://maps.apple.com/?ll=${loc.lat},${loc.lon}&q=Vehicle`;
+    text.url = mapsUrl(mapProvider, loc.lat, loc.lon);
     text.textColor = Color.blue();
   }
 }
@@ -1101,7 +1117,7 @@ const BLOCK_DEFS = {
   },
   location: {
     label: () => "LOCATION",
-    render: async (widget, status) => renderLocation(widget, status),
+    render: async (widget, status, vin, region, units, isEv, mapProvider) => renderLocation(widget, status, mapProvider),
   },
 };
 
@@ -1125,13 +1141,16 @@ function parseWidgetParameter(paramStr) {
     .filter(Boolean);
   let units = null;
   let titleMode = null;
+  let mapProvider = null;
   const items = [];
   for (const t of tokens) {
     if (t === "imperial" || t === "metric") units = t;
     else if (t === "notitle") titleMode = "hidden";
+    else if (t === "applemaps") mapProvider = "apple";
+    else if (t === "googlemaps") mapProvider = "google";
     else if (ITEM_KEYS_BY_LOWER[t]) items.push(ITEM_KEYS_BY_LOWER[t]);
   }
-  return { units, titleMode, items: items.length ? items : null };
+  return { units, titleMode, mapProvider, items: items.length ? items : null };
 }
 
 // Interactive picker (run the script, not from a widget) so the Parameter mini-language
@@ -1143,8 +1162,11 @@ async function runTileConfigurator() {
   const selected = new Set(loadDefaultTiles() || DEFAULT_TILES_FULL);
   let units = loadUnits();
   let titleMode = loadTitleMode();
+  let mapProvider = loadMapProvider();
   const TITLE_MODE_LABELS = { fordpass: '"FordPass"', hidden: "hidden" };
   const TITLE_MODE_CYCLE = ["fordpass", "hidden"];
+  const MAP_PROVIDER_LABELS = { apple: "Apple Maps", google: "Google Maps" };
+  const MAP_PROVIDER_CYCLE = ["apple", "google"];
 
   const table = new UITable();
   table.showSeparators = true;
@@ -1179,6 +1201,15 @@ async function runTileConfigurator() {
     };
     table.addRow(titleRow);
 
+    const mapRow = new UITableRow();
+    mapRow.dismissOnSelect = false;
+    mapRow.addText("Map", MAP_PROVIDER_LABELS[mapProvider]);
+    mapRow.onSelect = () => {
+      mapProvider = MAP_PROVIDER_CYCLE[(MAP_PROVIDER_CYCLE.indexOf(mapProvider) + 1) % MAP_PROVIDER_CYCLE.length];
+      render();
+    };
+    table.addRow(mapRow);
+
     for (const key of orderedItemKeys) {
       const row = new UITableRow();
       row.dismissOnSelect = false;
@@ -1199,6 +1230,7 @@ async function runTileConfigurator() {
       saveDefaultTiles(selectedInOrder());
       saveUnits(units);
       saveTitleMode(titleMode);
+      saveMapProvider(mapProvider);
       const a = new Alert();
       a.title = "Saved";
       a.message = "Widgets with a blank Parameter field will use this set next refresh.";
@@ -1211,7 +1243,8 @@ async function runTileConfigurator() {
     const copyBtn = copyRow.addButton("Copy as Parameter text for one specific widget");
     copyBtn.onTap = async () => {
       const titleToken = titleMode === "hidden" ? "notitle" : null;
-      const paramStr = [...selectedInOrder(), units, titleToken].filter(Boolean).join(",");
+      const mapToken = mapProvider === "google" ? "googlemaps" : null;
+      const paramStr = [...selectedInOrder(), units, titleToken, mapToken].filter(Boolean).join(",");
       Pasteboard.copyString(paramStr);
       const a = new Alert();
       a.title = "Copied";
@@ -1243,6 +1276,7 @@ async function buildWidget() {
   const paramCfg = parseWidgetParameter(args.widgetParameter);
   const units = paramCfg.units || loadUnits();
   const titleMode = paramCfg.titleMode || loadTitleMode();
+  const mapProvider = paramCfg.mapProvider || loadMapProvider();
   const compact = config.widgetFamily === "small";
   const itemKeys = paramCfg.items || loadDefaultTiles() || (compact ? DEFAULT_TILES_SMALL : DEFAULT_TILES_FULL);
 
@@ -1285,7 +1319,7 @@ async function buildWidget() {
         flushTiles();
         if (needsSpacer) widget.addSpacer(10);
         needsSpacer = true;
-        await BLOCK_DEFS[key].render(widget, status, vin, region, units, isEv);
+        await BLOCK_DEFS[key].render(widget, status, vin, region, units, isEv, mapProvider);
       }
     }
     flushTiles();

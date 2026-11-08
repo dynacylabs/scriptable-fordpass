@@ -66,8 +66,9 @@ widget → Edit Widget → Parameter) — a comma-separated list of item names (
 defaults in the next section — but you don't have to type this by hand:
 
 Run the script (tap it, don't just view the widget) → **Configure widget (tiles & units)**
-opens a checklist: tap a row to toggle that tile on/off, tap Units to flip imperial/metric, then
-either:
+opens a checklist: tap a row to toggle that tile on/off, tap Units to flip imperial/metric, tap
+Title to cycle the header, tap Map to switch between Apple Maps and Google Maps for the
+`location` block's link, then either:
 
 - **Save as default for blank-parameter widgets** — applies to every widget whose Parameter
   field is empty (the common case if you only have one widget).
@@ -105,6 +106,8 @@ kinds of tokens — order doesn't matter except for item order:
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
   preference (see Units below).
 - `notitle`, to hide the "FordPass" header entirely and reclaim that space.
+- `applemaps` or `googlemaps`, to pin that widget's `location` link to a specific maps app
+  regardless of the saved preference (default is Apple Maps).
 
 Example: `doorsVerbose,fuel,odometer,metric,notitle` shows the door table, then fuel + odometer
 on their own row below it, in metric, with no header. Leave it blank to get the saved default
