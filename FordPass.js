@@ -861,11 +861,7 @@ async function addImageTile(stack, label, vin, regionCfg, width) {
   const col = stack.addStack();
   col.layoutVertically();
   col.size = new Size(width, 0);
-  // centerAlignImage() below only centers the image's own pixels within whatever
-  // bounding box it's given -- it doesn't center that box within `col` itself, so the
-  // image (and label) still rendered flush left in the fixed-width cell without this.
-  col.centerAlignContent();
-  addTileLabel(col, label);
+  addTileLabel(col, label); // left-aligned, matching every other tile's label
   const token = await getValidToken(regionCfg);
   const img = await fetchVehicleImage(token, vin, regionCfg);
   if (!img) {
@@ -873,13 +869,20 @@ async function addImageTile(stack, label, vin, regionCfg, width) {
     v.font = Font.boldSystemFont(15);
     return;
   }
-  const wi = col.addImage(img);
+  // Two earlier attempts at centering the image both failed to actually do it:
+  // wi.centerAlignImage() only centers the image's own pixels within whatever
+  // bounding box it's given, not that box within `col`; col.centerAlignContent()
+  // doesn't work either -- confirmed against Scriptable's own WidgetText docs, which
+  // say outright that alignment methods "don't apply to text inside stacks" (the same
+  // is true for images) and that the actual, documented way to center a stack child is
+  // to wrap it in its own horizontal sub-stack with a flexible spacer on each side.
+  const imageRow = col.addStack();
+  imageRow.layoutHorizontally();
+  imageRow.addSpacer();
+  const wi = imageRow.addImage(img);
   wi.imageSize = INLINE_IMAGE_SIZE_BY_FAMILY[config.widgetFamily] || INLINE_IMAGE_SIZE_BY_FAMILY.medium;
   wi.applyFittingContentMode();
-  // Was leftAlignImage() -- looked off-center within the now-fixed-width cell
-  // (confirmed via screenshot review) since the vehicle photo's own aspect ratio
-  // rarely fills the full cell width/height exactly.
-  wi.centerAlignImage();
+  imageRow.addSpacer();
 }
 
 // ===================== doors (verbose layout) =====================
@@ -1366,7 +1369,6 @@ function addCommandButton(row, cmdKey, vin, width) {
   const def = WRITE_COMMANDS[cmdKey];
   const btn = row.addStack();
   btn.layoutVertically();
-  btn.centerAlignContent();
   btn.size = new Size(width, 0);
   // Tighter padding and a slightly smaller font than before -- fitting 5 equal-width
   // fixed columns in one row (see renderCommands) leaves less room per button than the
@@ -1377,11 +1379,15 @@ function addCommandButton(row, cmdKey, vin, width) {
   if (config.widgetFamily !== "small") {
     btn.url = `scriptable:///run/${encodeURIComponent(Script.name())}?cmd=${cmdKey}&vin=${encodeURIComponent(vin)}`;
   }
-  const t = btn.addText(def.label.toUpperCase());
-  // btn.centerAlignContent() alone wasn't enough -- the text element itself still
-  // renders left-aligned within whatever frame it's given, so it needs its own
-  // explicit center alignment too (confirmed via screenshot review).
-  t.centerAlignText();
+  // Two earlier attempts at centering this text both failed: btn.centerAlignContent()
+  // and t.centerAlignText() alike. Root cause, confirmed against Scriptable's own
+  // WidgetText docs: "Alignment doesn't apply to text inside stacks. For centered text
+  // in a horizontal stack, add a spacer both before and after the text." -- that's the
+  // literal, documented fix, not a style preference.
+  const textRow = btn.addStack();
+  textRow.layoutHorizontally();
+  textRow.addSpacer();
+  const t = textRow.addText(def.label.toUpperCase());
   // A shared, fixed-enough-to-never-need-shrinking font size, not minimumScaleFactor
   // doing the work -- that had each button scale down only as much as *its own* label
   // needed, so "LOCK" rendered at full size while "REFRESH" shrank noticeably smaller,
@@ -1391,6 +1397,7 @@ function addCommandButton(row, cmdKey, vin, width) {
   t.font = Font.boldSystemFont(8);
   t.lineLimit = 1;
   t.minimumScaleFactor = 0.95; // safety net only -- 8pt should already fit every label
+  textRow.addSpacer();
 }
 
 function renderCommands(widget, vin) {
