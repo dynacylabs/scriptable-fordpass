@@ -861,6 +861,10 @@ async function addImageTile(stack, label, vin, regionCfg, width) {
   const col = stack.addStack();
   col.layoutVertically();
   col.size = new Size(width, 0);
+  // centerAlignImage() below only centers the image's own pixels within whatever
+  // bounding box it's given -- it doesn't center that box within `col` itself, so the
+  // image (and label) still rendered flush left in the fixed-width cell without this.
+  col.centerAlignContent();
   addTileLabel(col, label);
   const token = await getValidToken(regionCfg);
   const img = await fetchVehicleImage(token, vin, regionCfg);
@@ -1374,6 +1378,10 @@ function addCommandButton(row, cmdKey, vin, width) {
     btn.url = `scriptable:///run/${encodeURIComponent(Script.name())}?cmd=${cmdKey}&vin=${encodeURIComponent(vin)}`;
   }
   const t = btn.addText(def.label.toUpperCase());
+  // btn.centerAlignContent() alone wasn't enough -- the text element itself still
+  // renders left-aligned within whatever frame it's given, so it needs its own
+  // explicit center alignment too (confirmed via screenshot review).
+  t.centerAlignText();
   // A shared, fixed-enough-to-never-need-shrinking font size, not minimumScaleFactor
   // doing the work -- that had each button scale down only as much as *its own* label
   // needed, so "LOCK" rendered at full size while "REFRESH" shrank noticeably smaller,

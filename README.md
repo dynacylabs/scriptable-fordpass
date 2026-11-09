@@ -519,3 +519,14 @@ A sixth round fixed three things found in that round's screenshots:
   keys, so a `newrow` saved via "Save as default" would've silently vanished the next time it
   loaded (fine for "Copy as Parameter text", which doesn't round-trip through that filter) --
   fixed to keep `newrow` through that filter too.
+
+A seventh round found both of the sixth round's `commands`/`imageTile` fixes were incomplete,
+each for the same underlying reason: fixing how a *child's own content* renders isn't the same
+as fixing where that child sits within its *parent stack*.
+- `commands`: `btn.centerAlignContent()` was already set on the button's own stack, but that
+  doesn't center the text *element* itself if the text doesn't stretch to fill the button's
+  width -- needed `t.centerAlignText()` on the text directly.
+- `imageTile`: `wi.centerAlignImage()` only centers the image's pixels within whatever bounding
+  box it's given -- it doesn't center that box within `col`, the tile's own column stack, which
+  was never told to center its children (`col.centerAlignContent()`) in the first place. Both
+  the label and the image were rendering flush left as a result.
