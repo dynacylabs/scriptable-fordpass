@@ -754,7 +754,8 @@ async function runMenu() {
     : "Not set up yet.";
   menu.addAction("View status (raw)");
   menu.addAction("Commands");
-  menu.addAction("Configure widget (tiles & units)");
+  menu.addAction("Configure widget (basic)");
+  menu.addAction("Configure widget (advanced)");
   menu.addAction("Manage vehicles");
   menu.addAction("Re-run setup / change region");
   menu.addAction("Export token (debug)");
@@ -768,12 +769,14 @@ async function runMenu() {
     } else if (choice === 1) {
       await runCommandMenu(vin, regionCfg);
     } else if (choice === 2) {
-      await runTileConfigurator();
+      await runTileConfigurator("basic");
     } else if (choice === 3) {
-      await runVehicleManager();
+      await runTileConfigurator("advanced");
     } else if (choice === 4) {
-      await runSetup();
+      await runVehicleManager();
     } else if (choice === 5) {
+      await runSetup();
+    } else if (choice === 6) {
       const token = loadToken();
       const a = new Alert();
       if (!token) {
@@ -810,6 +813,15 @@ function addTile(stack, label, value) {
   l.textColor = Color.gray();
   const v = col.addText(value == null ? "—" : String(value));
   v.font = Font.boldSystemFont(15);
+}
+
+// A fixed 16pt gap between a verbose block's 2 columns left most of a medium/large
+// widget's width empty (confirmed via screenshot review -- the grid only used the left
+// ~40% of the widget). Widening the gap on wider families spreads the same 2-column
+// layout across the actual available width instead of changing the layout itself.
+const VERBOSE_GRID_GAP_BY_FAMILY = { small: 16, medium: 70, large: 70 };
+function gridColumnGap() {
+  return VERBOSE_GRID_GAP_BY_FAMILY[config.widgetFamily] || 16;
 }
 
 // ===================== doors (verbose layout) =====================
@@ -880,14 +892,14 @@ function renderDoorsVerbose(widget, status, region) {
   const row1 = widget.addStack();
   row1.layoutHorizontally();
   addDoorCell(row1, grid.front.left.label, grid.front.left.open, grid.front.left.lock);
-  row1.addSpacer(16);
+  row1.addSpacer(gridColumnGap());
   addDoorCell(row1, grid.front.right.label, grid.front.right.open, grid.front.right.lock);
 
   widget.addSpacer(6);
   const row2 = widget.addStack();
   row2.layoutHorizontally();
   addDoorCell(row2, grid.rear.left.label, grid.rear.left.open, grid.rear.left.lock);
-  row2.addSpacer(16);
+  row2.addSpacer(gridColumnGap());
   addDoorCell(row2, grid.rear.right.label, grid.rear.right.open, grid.rear.right.lock);
 
   if (grid.tailgate) {
@@ -971,14 +983,14 @@ function renderTiresVerbose(widget, status, units) {
   const row1 = widget.addStack();
   row1.layoutHorizontally();
   addTireCell(row1, fl);
-  row1.addSpacer(16);
+  row1.addSpacer(gridColumnGap());
   addTireCell(row1, fr);
 
   widget.addSpacer(6);
   const row2 = widget.addStack();
   row2.layoutHorizontally();
   addTireCell(row2, rl);
-  row2.addSpacer(16);
+  row2.addSpacer(gridColumnGap());
   addTireCell(row2, rr);
 }
 
@@ -1053,14 +1065,14 @@ function renderWindowsVerbose(widget, status, region) {
   const row1 = widget.addStack();
   row1.layoutHorizontally();
   addWindowCell(row1, grid.front.left.label, grid.front.left.value);
-  row1.addSpacer(16);
+  row1.addSpacer(gridColumnGap());
   addWindowCell(row1, grid.front.right.label, grid.front.right.value);
 
   widget.addSpacer(6);
   const row2 = widget.addStack();
   row2.layoutHorizontally();
   addWindowCell(row2, grid.rear.left.label, grid.rear.left.value);
-  row2.addSpacer(16);
+  row2.addSpacer(gridColumnGap());
   addWindowCell(row2, grid.rear.right.label, grid.rear.right.value);
 }
 
@@ -1078,6 +1090,21 @@ function seatBeltSummaryText(status) {
   return unbuckled.length === 0 ? "OK" : `${unbuckled.length} UNBUCKLED`;
 }
 
+// Matches the doors/tires/windows cell style (label above, bold value below), 2 per
+// row -- originally this was a single-column list with a flexible spacer pushing the
+// value to the far right edge, which looked fine for 1 occupant but left a large,
+// awkward gap on a medium/large widget (confirmed via screenshot review).
+function addSeatBeltCell(stack, belt) {
+  const col = stack.addStack();
+  col.layoutVertically();
+  const l = col.addText(humanizeStatus(belt.vehicleOccupantRole || "UNKNOWN"));
+  l.font = Font.systemFont(9);
+  l.textColor = Color.gray();
+  const v = col.addText(humanizeStatus(belt.value || ""));
+  v.font = Font.boldSystemFont(12);
+  if (belt.value === "UNBUCKLED") v.textColor = Color.orange();
+}
+
 function renderSeatBeltVerbose(widget, status) {
   const belts = metricArray(status, "seatBeltStatus");
 
@@ -1093,16 +1120,15 @@ function renderSeatBeltVerbose(widget, status) {
     return;
   }
 
-  for (const belt of belts) {
+  for (let i = 0; i < belts.length; i += 2) {
+    if (i > 0) widget.addSpacer(6);
     const row = widget.addStack();
     row.layoutHorizontally();
-    const label = row.addText(humanizeStatus(belt.vehicleOccupantRole || "UNKNOWN"));
-    label.font = Font.systemFont(11);
-    row.addSpacer();
-    const value = row.addText(humanizeStatus(belt.value || ""));
-    value.font = Font.boldSystemFont(11);
-    if (belt.value === "UNBUCKLED") value.textColor = Color.orange();
-    widget.addSpacer(4);
+    addSeatBeltCell(row, belts[i]);
+    if (belts[i + 1]) {
+      row.addSpacer(gridColumnGap());
+      addSeatBeltCell(row, belts[i + 1]);
+    }
   }
 }
 
@@ -1462,10 +1488,14 @@ async function fetchVehicleImage(token, vin, regionCfg) {
 // contributor to that (90pt tall eats most of a small/medium widget's ~155pt height),
 // so it's sized down per family here. These are the standard iPhone widget point
 // sizes; real sizes vary slightly by device but this is close enough to budget by.
+// "large" was bumped up from 290x90 after screenshot review showed a large widget with
+// just `image` (no other tiles) leaving most of the widget's height empty below a small
+// image -- small/medium stay conservative since those are more likely to be combined
+// with several tiles, where the original small-image reasoning above still applies.
 const IMAGE_SIZE_BY_FAMILY = {
   small: new Size(120, 40),
   medium: new Size(260, 55),
-  large: new Size(290, 90),
+  large: new Size(300, 160),
 };
 
 async function renderVehicleImage(widget, vin, regionCfg) {
@@ -1496,47 +1526,58 @@ const WRITE_COMMANDS = {
 const TILE_DEFS = {
   doors: {
     label: () => "DOORS",
+    basic: true,
     value: (status) => metricValue(status, "doorLockStatus", (d) => d.vehicleDoor === "ALL_DOORS"),
   },
   fuel: {
     label: (isEv) => (isEv ? "CHARGE" : "FUEL"),
+    basic: true,
     value: (status) => formatPercent(metricValue(status, "fuelLevel") ?? metricValue(status, "xevBatteryStateOfCharge")),
   },
   range: {
     label: () => "RANGE",
+    basic: true,
     value: (status, units) =>
       formatDistanceKm(metricValue(status, "fuelRange") ?? metricValue(status, "xevBatteryRange"), units),
   },
   odometer: {
     label: () => "ODOMETER",
+    basic: true,
     value: (status, units) => formatDistanceKm(metricValue(status, "odometer"), units),
   },
-  temp: {
+  outside: {
     label: () => "OUTSIDE",
+    basic: true,
     value: (status, units) => formatTempC(metricValue(status, "outsideTemperature"), units),
   },
   oil: {
     label: () => "OIL LIFE",
+    basic: true,
     value: (status) => formatPercent(metricValue(status, "oilLifeRemaining")),
   },
   battery12v: {
     label: () => "12V BATT",
+    basic: true,
     value: (status) => formatPercent(metricValue(status, "batteryStateOfCharge")),
   },
   tires: {
     label: () => "TIRES",
+    basic: true,
     value: (status) => tireSummaryText(status),
   },
   windows: {
     label: () => "WINDOWS",
+    basic: true,
     value: (status) => windowSummaryText(status),
   },
   alarm: {
     label: () => "ALARM",
+    basic: true,
     value: (status) => metricValue(status, "alarmStatus"),
   },
   panicAlarm: {
     label: () => "PANIC ALARM",
+    basic: true,
     // Ford's own raw value for "no panic event" is literally the string "UNDEFINED" —
     // real data, not a bug, but not worth showing verbatim; treat it like no-data.
     value: (status) => {
@@ -1546,32 +1587,38 @@ const TILE_DEFS = {
   },
   ignition: {
     label: () => "IGNITION",
+    basic: true,
     value: (status) => metricValue(status, "ignitionStatus"),
   },
   health: {
     label: () => "HEALTH",
+    basic: true,
     value: (status) => healthAlertsSummaryText(status),
   },
   hood: {
     label: () => "HOOD",
+    basic: true,
     value: (status) => metricValue(status, "hoodStatus"),
   },
   parkingBrake: {
     label: () => "PARK BRAKE",
+    basic: true,
     value: (status) => metricValue(status, "parkingBrakeStatus"),
   },
   remoteStartTimer: {
     label: () => "REMOTE START",
+    basic: true,
     value: (status) => formatRemoteStartCountdown(metricValue(status, "remoteStartCountdownTimer")),
   },
   ambientTemp: {
     label: () => "AMBIENT",
-    // Separate from outsideTemperature ("temp" tile) -- reads 0.0 on the vehicle this
+    // Separate from outsideTemperature ("outside" tile) -- reads 0.0 on the vehicle this
     // was verified against, meaning of the difference between the two unconfirmed.
     value: (status, units) => formatTempC(metricValue(status, "ambientTemp"), units),
   },
   seatBelt: {
     label: () => "SEAT BELTS",
+    basic: true,
     value: (status) => seatBeltSummaryText(status),
   },
   xevPlugCharger: {
@@ -1642,7 +1689,7 @@ const TILE_DEFS = {
 };
 
 const DEFAULT_TILES_SMALL = ["doors", "fuel"];
-const DEFAULT_TILES_FULL = ["doors", "fuel", "range", "odometer", "temp", "oil", "battery12v"];
+const DEFAULT_TILES_FULL = ["doors", "fuel", "range", "odometer", "outside", "oil", "battery12v"];
 const TILES_PER_ROW = 3;
 
 // Full-width elements — unlike TILE_DEFS entries, these render themselves (not as a
@@ -1652,26 +1699,32 @@ const TILES_PER_ROW = 3;
 const BLOCK_DEFS = {
   image: {
     label: () => "VEHICLE IMAGE",
+    basic: true,
     render: async (widget, status, vin, region) => renderVehicleImage(widget, vin, REGIONS[region]),
   },
   doorsVerbose: {
     label: () => "DOORS (VERBOSE)",
+    basic: true,
     render: async (widget, status, vin, region) => renderDoorsVerbose(widget, status, region),
   },
   tiresVerbose: {
     label: () => "TIRES (VERBOSE)",
+    basic: true,
     render: async (widget, status, vin, region, units) => renderTiresVerbose(widget, status, units),
   },
   windowsVerbose: {
     label: () => "WINDOWS (VERBOSE)",
+    basic: true,
     render: async (widget, status, vin, region) => renderWindowsVerbose(widget, status, region),
   },
   healthVerbose: {
     label: () => "VEHICLE HEALTH (VERBOSE)",
+    basic: true,
     render: async (widget, status) => renderHealthAlertsVerbose(widget, status),
   },
   seatBeltVerbose: {
     label: () => "SEAT BELTS (VERBOSE)",
+    basic: true,
     render: async (widget, status) => renderSeatBeltVerbose(widget, status),
   },
   accelerationVerbose: {
@@ -1684,10 +1737,12 @@ const BLOCK_DEFS = {
   },
   location: {
     label: () => "LOCATION",
+    basic: true,
     render: async (widget, status, vin, region, units, isEv, mapProvider) => renderLocation(widget, status, mapProvider),
   },
   commands: {
     label: () => "COMMANDS (LOCK/UNLOCK/START/STOP)",
+    basic: true,
     render: async (widget, status, vin) => renderCommands(widget, vin),
   },
 };
@@ -1731,8 +1786,22 @@ function parseWidgetParameter(paramStr) {
 // doesn't have to be typed from memory. Lets you either save a default tile set used by
 // any widget with a blank Parameter field, or copy a ready-made Parameter string to
 // paste into one specific widget that should differ from the default.
-async function runTileConfigurator() {
+//
+// mode "basic" shows only the commonly-useful items (parked-vehicle dashboard stuff);
+// mode "advanced" shows everything, including driving-only telemetry and raw/unconfirmed
+// signals (see the `basic: true` flags on TILE_DEFS/BLOCK_DEFS entries above). Either
+// mode can still save/copy a selection that includes items from the other mode -- e.g. an
+// advanced item picked earlier stays selected even while browsing the basic list, it's
+// just not shown there to toggle. The displayed list is alphabetical by label for easy
+// browsing; this is purely a display order -- the actual tile layout on the widget
+// follows TILE_DEFS/BLOCK_DEFS declaration order (via selectedInOrder() below),
+// unaffected by how the list happened to be sorted while picking.
+async function runTileConfigurator(mode) {
   const orderedItemKeys = [...Object.keys(TILE_DEFS), ...Object.keys(BLOCK_DEFS)];
+  const isBasicMode = mode === "basic";
+  const displayItemKeys = orderedItemKeys
+    .filter((k) => !isBasicMode || (TILE_DEFS[k] || BLOCK_DEFS[k]).basic)
+    .sort((a, b) => (TILE_DEFS[a] || BLOCK_DEFS[a]).label(false).localeCompare((TILE_DEFS[b] || BLOCK_DEFS[b]).label(false)));
   const selected = new Set(loadDefaultTiles() || DEFAULT_TILES_FULL);
   let units = loadUnits();
   let titleMode = loadTitleMode();
@@ -1756,7 +1825,11 @@ async function runTileConfigurator() {
 
     const header = new UITableRow();
     header.isHeader = true;
-    header.addText("Tap a row to toggle it, then save or copy below.");
+    header.addText(
+      isBasicMode
+        ? "Basic — tap a row to toggle it, then save or copy below. Driving telemetry & raw signals are in Advanced."
+        : "Advanced — every available item. Tap a row to toggle it, then save or copy below."
+    );
     table.addRow(header);
 
     const unitsRow = new UITableRow();
@@ -1827,7 +1900,7 @@ async function runTileConfigurator() {
     };
     table.addRow(goHomeRow);
 
-    for (const key of orderedItemKeys) {
+    for (const key of displayItemKeys) {
       const row = new UITableRow();
       row.dismissOnSelect = false;
       const def = TILE_DEFS[key] || BLOCK_DEFS[key];

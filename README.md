@@ -57,9 +57,10 @@ anywhere; they live only in Scriptable's on-device `Keychain`.
 Running the script again later (instead of just viewing the widget) opens a menu: **View status
 (raw)** (read-only, shows whatever Ford already has cached), **Commands** (a submenu of every
 write command — lock, unlock, remote start, cancel remote start, request a fresh report; see
-Write commands below for the distinction between this and "View status"), **Configure widget**
-(see below), **Manage vehicles** (see Multiple vehicles below), **Re-run setup** (to change your
-region or sign in again), or **Export token (debug)**.
+Write commands below for the distinction between this and "View status"), **Configure widget
+(basic)** / **Configure widget (advanced)** (see Configuring a widget below), **Manage vehicles**
+(see Multiple vehicles below), **Re-run setup** (to change your region or sign in again), or
+**Export token (debug)**.
 
 ## Multiple vehicles
 
@@ -131,8 +132,9 @@ you turn on yourself after creating the shortcut:
 2. Add Action → search for **"Go to Home Screen"** → add it. It should be the only action in
    the shortcut.
 3. Rename the shortcut to exactly **`Go Home`** (tap the shortcut's name/settings at the top).
-4. Run the script (not the widget) → **Configure widget (tiles & units)** → the
-   **`"Go Home" after widget commands`** row → confirm you've created it → it switches to **On**.
+4. Run the script (not the widget) → **Configure widget (basic)** or **(advanced)** (either one
+   has this row) → the **`"Go Home" after widget commands`** row → confirm you've created it →
+   it switches to **On**.
 
 Until you turn this on, commands still send fine — you'll just land wherever Scriptable would
 normally leave you afterward, same as before this feature existed, instead of risking a trip to
@@ -145,15 +147,25 @@ not just confirmation noise, so it's never suppressed.
 
 Each widget instance can show a different set of tiles, via its Parameter field (long-press the
 widget → Edit Widget → Parameter) — a comma-separated list of item names (`doors`, `fuel`,
-`range`, `odometer`, `temp`, `oil`, `battery12v`, `doorsVerbose`, `image`) plus an optional
+`range`, `odometer`, `outside`, `oil`, `battery12v`, `doorsVerbose`, `image`) plus an optional
 `imperial`/`metric` override, e.g. `doors,fuel,odometer,metric`. See the full explanation and
 defaults in the next section — but you don't have to type this by hand:
 
-Run the script (tap it, don't just view the widget) → **Configure widget (tiles & units)**
-opens a checklist: tap a row to toggle that tile on/off, tap Units to flip imperial/metric, tap
-Title to cycle the header, tap Map to switch between Apple Maps and Google Maps for the
-`location` block's link, tap `"Go Home" after widget commands` to turn that on/off (saves
-immediately, unlike the rows below — see Returning to the home screen above), then either:
+Run the script (tap it, don't just view the widget) → **Configure widget (basic)** or
+**Configure widget (advanced)** opens a checklist (sorted alphabetically by name, to make one
+item easy to find in a long list): tap a row to toggle that tile on/off, tap Units to flip
+imperial/metric, tap Title to cycle the header, tap Map to switch between Apple Maps and Google
+Maps for the `location` block's link, tap `"Go Home" after widget commands` to turn that on/off
+(saves immediately, unlike the rows below — see Returning to the home screen above), then either:
+
+**Basic** shows only the commonly-useful items — the stuff most people want on a parked-vehicle
+dashboard. **Advanced** shows everything Basic does, plus driving-only telemetry (speed, pedals,
+torque, RPM, trip stats, etc.) and a few raw/unconfirmed signals (`ambientTemp`,
+`xevPlugCharger`, the accelerometer, custom metrics) — see Status below for why those are kept
+out of Basic. Either mode can save or copy a selection that includes items picked in the other
+mode; Basic just doesn't show them to toggle. Which mode you're in doesn't affect the actual
+tile order on the widget — that's always governed by this reference's order below, regardless of
+how the picker list happened to be sorted while you were choosing.
 
 - **Save as default for blank-parameter widgets** — applies to every widget whose Parameter
   field is empty (the common case if you only have one widget).
@@ -168,7 +180,7 @@ kinds of tokens — order doesn't matter except for item order:
 
 - Tile names (each takes a third of a row, 3 to a row), in the order you want them shown:
   `doors` (collapsed, one line), `fuel` (fuel level or EV charge %), `range`, `odometer`,
-  `temp` (outside temp), `oil` (oil life, ICE only), `battery12v` (12V battery), `tires` — a
+  `outside` (outside temp), `oil` (oil life, ICE only), `battery12v` (12V battery), `tires` — a
   one-word summary ("OK", or e.g. "1 Low" / "2 issues") of Ford's own per-wheel verdict,
   `windows` — "CLOSED", "OPEN", or e.g. "1 OPEN" if some but not all are open, `alarm` (e.g.
   "DISARMED" — the security system's armed state), `panicAlarm` (Ford's dedicated
@@ -177,7 +189,7 @@ kinds of tokens — order doesn't matter except for item order:
   individual warning lights (check engine, low oil pressure, TPMS fault, etc.) are active,
   `hood` (e.g. "CLOSED"), `parkingBrake` (e.g. "OFF"), `remoteStartTimer` — "OFF", or minutes
   remaining during an active remote start, `ambientTemp` — a second temperature reading,
-  distinct from `temp` (see Status below for what's unconfirmed about it), `seatBelt` — "OK",
+  distinct from `outside` (see Status below for what's unconfirmed about it), `seatBelt` — "OK",
   or "N UNBUCKLED" if any occupant's belt is unbuckled, `xevPlugCharger` — Ford's raw plug
   state (see Status below for why this is unconfirmed on a non-plug-in vehicle). Driving
   telemetry (meaningful mainly while actually driving, all opt-in): `speed`, `accelPedal` —
@@ -315,11 +327,11 @@ here, but it's equally unverified live for the same reason — needs a real devi
 Home" shortcut actually created to confirm it lands cleanly on the home screen rather than
 stalling on the Shortcuts app.
 
-Two corrections found during a full raw-telemetry inventory pass: the `temp` tile had been
-reading a metric key called `outsideTemp`, which doesn't exist — the real key is
-`outsideTemperature` — so it had been silently showing `—` since the tile was added; fixed and
-confirmed against real data (9.25°C). Separately, the vehicle's `nickName` field (the thing the
-earlier, reverted nickname-title-mode attempt was looking for) does exist, but at the garage
+Two corrections found during a full raw-telemetry inventory pass: the `outside` tile (then still
+named `temp`) had been reading a metric key called `outsideTemp`, which doesn't exist — the real
+key is `outsideTemperature` — so it had been silently showing `—` since the tile was added; fixed
+and confirmed against real data (9.25°C). Separately, the vehicle's `nickName` field (the thing
+the earlier, reverted nickname-title-mode attempt was looking for) does exist, but at the garage
 vehicle object's **top level**, not nested inside `profile` like every guess that attempt tried
 — it just happens to be `null` for this account's vehicle (never set via whatever channel
 populates it), which is why re-adding that feature wasn't prioritized here, not because the
@@ -381,3 +393,28 @@ unit or scale for anything that would only move off zero while actually driving:
   whatever the vehicle happens to report, labeled by the readable suffix after the last `:`.
   This vehicle currently reports 5 (acceleration/deceleration/cruising coaching scores, trip
   length, trip fuel consumption) — a different vehicle may report a completely different set.
+
+## Visual layout notes
+
+Found via a real-device screenshot review pass (15 screenshots across widget sizes and every
+verbose block/image/location/commands combination), not just reasoned about:
+
+- The 2-column verbose grids (`doorsVerbose`, `tiresVerbose`, `windowsVerbose`,
+  `seatBeltVerbose`) used a fixed 16pt gap between columns regardless of widget size, which left
+  roughly the right half of a medium/large widget empty. Fixed by widening that gap on
+  medium/large widgets (`gridColumnGap()` in the script) so the same 2-column layout spreads
+  across the actual available width instead of hugging the left edge.
+- `seatBeltVerbose` originally put each occupant on its own full-width row with a flexible
+  spacer pushing the buckled/unbuckled value to the far right edge — fine with 1 occupant, but
+  an oddly large gap with the label. Redesigned to match the doors/tires/windows cell style
+  (label above, bold value below), 2 occupants per row.
+- `image` alone on a large widget left most of the widget's height empty below a small photo —
+  bumped the large-family image size up (small/medium left alone, since those are more often
+  combined with several tiles where the original small-image sizing still matters more).
+- A widget's canvas size is fixed by iOS per family with no scrolling, so selecting more content
+  than fits (confirmed live with a "kitchen sink" large widget selecting everything) just clips
+  silently at the bottom — there's no way around this in Scriptable's widget API, so it's a
+  "don't over-select for the widget size you're using" guideline rather than a bug to fix.
+- `location` alone on a large widget is sparse (two lines of text, no map preview) — left as-is
+  for now rather than adding a static map image, since that would mean depending on a map
+  provider's snapshot API (and likely an API key) that doesn't exist on-device in Scriptable.
