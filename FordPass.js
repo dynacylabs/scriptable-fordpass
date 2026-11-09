@@ -1376,10 +1376,10 @@ function addCommandButton(row, cmdKey, vin, width) {
   const btn = row.addStack();
   btn.layoutVertically();
   btn.size = new Size(width, 0);
-  // Tighter padding and a slightly smaller font than before -- fitting 5 equal-width
-  // fixed columns in one row (see renderCommands) leaves less room per button than the
-  // old content-sized buttons had, and "REFRESH" is the longest label.
-  btn.setPadding(6, 6, 6, 6);
+  // Tighter padding and a smaller font than before -- fitting 5 equal-width fixed
+  // columns in one row (see renderCommands) leaves less room per button than the old
+  // content-sized buttons had, and "REFRESH"/"UNLOCK" are the longest labels.
+  btn.setPadding(6, 4, 6, 4);
   btn.cornerRadius = 8;
   btn.backgroundColor = Color.dynamic(new Color("#eef1f6"), new Color("#242831"));
   if (config.widgetFamily !== "small") {
@@ -1398,23 +1398,29 @@ function addCommandButton(row, cmdKey, vin, width) {
   // width budget as `btn` itself (minus btn's own horizontal padding, which insets
   // everything laid out inside btn, textRow included) fixes that: now there's an actual
   // known width for the spacers to divide.
-  const textRowWidth = width - 12; // btn's setPadding(6, 6, 6, 6) above eats 6pt each side
+  const textRowWidth = width - 8; // btn's setPadding(6, 4, 6, 4) above eats 4pt each side
   const textRow = btn.addStack();
   textRow.layoutHorizontally();
   textRow.size = new Size(textRowWidth, 0);
   textRow.addSpacer();
   const t = textRow.addText(def.label.toUpperCase());
-  // A shared, fixed-enough-to-usually-not-need-shrinking font size, not
-  // minimumScaleFactor doing the sizing work on its own -- that had each button scale
-  // down only as much as *its own* label needed, so "LOCK" rendered at full size while
-  // "REFRESH" shrank noticeably smaller, a visibly inconsistent row rather than 5
-  // uniform buttons (confirmed via screenshot review). 8pt is sized for "REFRESH", the
-  // longest label, to fit this cell's width without shrinking at all, so every button
-  // ends up the same size; minimumScaleFactor is kept generous (not just a token 0.95)
-  // as a real safety net given how little margin ~40pt of actual text width leaves.
-  t.font = Font.boldSystemFont(8);
+  // A shared, fixed font size, not minimumScaleFactor doing the sizing work on its own
+  // -- that had each button scale down only as much as *its own* label needed, so
+  // "LOCK" rendered at full size while "REFRESH" shrank noticeably smaller, a visibly
+  // inconsistent row rather than 5 uniform buttons (confirmed via screenshot review).
+  // 8pt still truncated "UNLOCK"/"REFRESH" even after fixing the nested-stack sizing
+  // bug above -- character-width-per-point estimates for this font aren't reliable
+  // enough to trust down to the last point without live-device testing, so this went
+  // smaller (7pt) and the gap/padding both got trimmed too (see renderCommands and
+  // btn.setPadding above) for real margin instead of a razor-thin fit. More importantly,
+  // minimumScaleFactor is now low enough (0.5 -> a 3.5pt floor) to guarantee a fit even
+  // under a much more pessimistic character-width estimate than 8pt/0.7 turned out to
+  // be -- lineLimit(1) + minimumScaleFactor is the standard "shrink, never truncate"
+  // combination, so the floor itself, not the arithmetic above it, is what should
+  // actually prevent another round of "UN...", "RE...".
+  t.font = Font.boldSystemFont(7);
   t.lineLimit = 1;
-  t.minimumScaleFactor = 0.7;
+  t.minimumScaleFactor = 0.5;
   textRow.addSpacer();
 }
 
@@ -1429,13 +1435,21 @@ function renderCommands(widget, vin) {
   // for an unknown number of commands, left obvious unused room). Fixed-width buttons
   // (not content-sized + flexible spacer) so they read as a tidy row of equal-size
   // buttons instead of 5 differently-sized pills.
+  //
+  // Uses its own tighter gap (COMMANDS_GAP) instead of the grids' COLUMN_GAP/
+  // columnWidth() -- "REFRESH" kept truncating even after fixing the nested-stack
+  // sizing bug (see addCommandButton), so this claws back a few more points of width
+  // per button; buttons don't need as much breathing room as the text grids anyway,
+  // since each one already reads as a separate element via its own background pill.
+  const COMMANDS_GAP = 6;
   const keys = Object.keys(WRITE_COMMANDS);
-  const w = columnWidth(keys.length);
+  const total = WIDGET_CONTENT_WIDTH_BY_FAMILY[config.widgetFamily] || WIDGET_CONTENT_WIDTH_BY_FAMILY.medium;
+  const w = (total - COMMANDS_GAP * (keys.length - 1)) / keys.length;
   const row = widget.addStack();
   row.layoutHorizontally();
   keys.forEach((key, idx) => {
     addCommandButton(row, key, vin, w);
-    if (idx < keys.length - 1) row.addSpacer(COLUMN_GAP);
+    if (idx < keys.length - 1) row.addSpacer(COMMANDS_GAP);
   });
 
   if (config.widgetFamily === "small") {

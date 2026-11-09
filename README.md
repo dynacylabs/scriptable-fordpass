@@ -551,3 +551,17 @@ Applied the identical explicit-size fix to `imageTile`'s equivalent `imageRow` w
 proactively, even though it hadn't been reported broken, since it has the exact same unsized-
 nested-stack shape and so the same latent risk -- `col` has no padding, so its full width budget
 applies to `imageRow` directly, no subtraction needed there.
+
+A ninth round found the eighth round's fix was only half right: `imageTile` was confirmed good,
+but `commands` still truncated "UNLOCK"/"REFRESH" even with the nested-stack sizing bug fixed --
+meaning the real ~40pt text budget genuinely wasn't enough at 8pt font, not just a width-
+computation mismatch. Character-width-per-point estimates for this font turned out unreliable
+twice in a row (both this round and the original 8pt-should-fit guess), so rather than trying to
+land on the exact right number a third time: `commands` now uses its own tighter gap (6pt instead
+of the grids' shared 10pt -- buttons don't need as much breathing room as the text grids, since
+each one already reads as separate via its own background pill) for a bit more width per button,
+trimmed the button padding too, dropped the font to 7pt, and — the part actually meant to
+guarantee this doesn't happen a third time — lowered `minimumScaleFactor` to 0.5 (a 3.5pt floor).
+`lineLimit(1)` + `minimumScaleFactor` is the standard "shrink, never truncate" combination, so a
+low enough floor should prevent truncation outright regardless of whether the arithmetic above it
+is exactly right, even if the floor itself ends up looking tiny in the worst case.
