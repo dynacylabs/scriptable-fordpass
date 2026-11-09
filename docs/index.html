@@ -360,10 +360,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---- Copy script to clipboard ----
-  function copyText(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(text);
-    }
+  function copyViaExecCommand(text) {
     return new Promise(function (resolve, reject) {
       var ta = document.createElement("textarea");
       ta.value = text;
@@ -373,14 +370,26 @@
       ta.focus();
       ta.select();
       try {
-        document.execCommand("copy");
-        resolve();
+        document.execCommand("copy") ? resolve() : reject(new Error("execCommand copy returned false"));
       } catch (e) {
         reject(e);
       } finally {
         document.body.removeChild(ta);
       }
     });
+  }
+
+  // Tries the modern Clipboard API first, but that can reject even in a secure
+  // context (permission denied by browser/site settings, no user-activation in
+  // the call chain, etc.), so always fall back to the execCommand trick rather
+  // than surfacing an error the user can't do anything about.
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () {
+        return copyViaExecCommand(text);
+      });
+    }
+    return copyViaExecCommand(text);
   }
 
   $("copyScriptBtn").addEventListener("click", function () {
