@@ -1876,22 +1876,30 @@ function parseWidgetParameter(paramStr) {
 // any widget with a blank Parameter field, or copy a ready-made Parameter string to
 // paste into one specific widget that should differ from the default.
 //
-// mode "basic" shows only the commonly-useful items (parked-vehicle dashboard stuff);
-// mode "advanced" shows everything, including driving-only telemetry and raw/unconfirmed
-// signals (see the `basic: true` flags on TILE_DEFS/BLOCK_DEFS entries above). Either
-// mode can still save/copy a selection that includes items from the other mode -- e.g. an
-// advanced item picked earlier stays selected even while browsing the basic list, it's
-// just not shown there to toggle. The displayed list is alphabetical by label for easy
-// browsing; this is purely a display order -- the actual tile layout on the widget
-// follows TILE_DEFS/BLOCK_DEFS declaration order (via selectedInOrder() below),
-// unaffected by how the list happened to be sorted while picking.
+// mode "basic" shows only the commonly-useful items (parked-vehicle dashboard stuff) in
+// the "Add more" list below; mode "advanced" shows everything there, including
+// driving-only telemetry and raw/unconfirmed signals (see the `basic: true` flags on
+// TILE_DEFS/BLOCK_DEFS entries above). Either mode can still save/copy a selection that
+// includes items added from the other mode -- e.g. an advanced item added earlier stays
+// in "Selected" (and reorderable) even while browsing the basic "Add more" list, it's
+// just not offered there to add again. "Add more" is alphabetical by label for easy
+// browsing, but that's purely how that list is browsed -- the actual widget order is
+// "Selected"'s own order (selectedOrder below), which you control directly with each
+// row's ↑/↓ buttons, independent of how "Add more" happened to be sorted.
 async function runTileConfigurator(mode) {
   const orderedItemKeys = [...Object.keys(TILE_DEFS), ...Object.keys(BLOCK_DEFS)];
   const isBasicMode = mode === "basic";
-  const displayItemKeys = orderedItemKeys
+  // Items available to add, alphabetical for browsing (unrelated to the actual widget
+  // order, which is the user's own choice below -- see selectedOrder).
+  const addableItemKeys = orderedItemKeys
     .filter((k) => !isBasicMode || (TILE_DEFS[k] || BLOCK_DEFS[k]).basic)
     .sort((a, b) => (TILE_DEFS[a] || BLOCK_DEFS[a]).label(false).localeCompare((TILE_DEFS[b] || BLOCK_DEFS[b]).label(false)));
-  const selected = new Set(loadDefaultTiles() || DEFAULT_TILES_FULL);
+  // Scriptable's UITable has no drag-and-drop or move API at all (confirmed against
+  // its docs -- rows render in whatever order addRow() was called, full stop), so
+  // reordering is done with explicit up/down buttons per row instead: this array IS
+  // the widget's tile order, moved around directly rather than derived from some other
+  // fixed order. A plain array (not a Set) since order is exactly what it's tracking.
+  let selectedOrder = [...(loadDefaultTiles() || DEFAULT_TILES_FULL)];
   let units = loadUnits();
   let titleMode = loadTitleMode();
   let mapProvider = loadMapProvider();
@@ -1907,10 +1915,6 @@ async function runTileConfigurator(mode) {
   const table = new UITable();
   table.showSeparators = true;
 
-  function selectedInOrder() {
-    return orderedItemKeys.filter((k) => selected.has(k));
-  }
-
   function render() {
     table.removeAllRows();
 
@@ -1918,8 +1922,10 @@ async function runTileConfigurator(mode) {
     header.isHeader = true;
     header.addText(
       isBasicMode
-        ? "Basic — tap a row to toggle it, then save or copy below. Driving telemetry & raw signals are in Advanced."
-        : "Advanced — every available item. Tap a row to toggle it, then save or copy below."
+        ? "Basic — reorder with ↑/↓, tap a row to remove it, then save or copy below. Driving " +
+            "telemetry & raw signals are in Advanced."
+        : "Advanced — every available item. Reorder with ↑/↓, tap a row to remove it, then save " +
+            "or copy below."
     );
     table.addRow(header);
 
@@ -2000,15 +2006,58 @@ async function runTileConfigurator(mode) {
     };
     table.addRow(goHomeRow);
 
-    for (const key of displayItemKeys) {
+    const selectedHeader = new UITableRow();
+    selectedHeader.isHeader = true;
+    selectedHeader.addText(
+      selectedOrder.length === 0 ? "Selected: none yet — add some below" : "Selected (this is the widget's order)"
+    );
+    table.addRow(selectedHeader);
+
+    selectedOrder.forEach((key, idx) => {
+      const def = TILE_DEFS[key] || BLOCK_DEFS[key];
+      const row = new UITableRow();
+      row.dismissOnSelect = false;
+      // Tapping the label removes it (same single-tap-to-toggle gesture as before);
+      // the ↑/↓ cells are separate tap targets within the same row that reorder
+      // instead, each a no-op at the list's own start/end rather than wrapping around
+      // (wrapping "up" from the top to the bottom reads as a bug, not a feature, here).
+      const labelCell = row.addText(def.label(false));
+      labelCell.widthWeight = 70;
+      row.onSelect = () => {
+        selectedOrder.splice(idx, 1);
+        render();
+      };
+      const upCell = row.addButton(idx > 0 ? "↑" : "");
+      upCell.widthWeight = 15;
+      upCell.onTap = () => {
+        if (idx === 0) return;
+        [selectedOrder[idx - 1], selectedOrder[idx]] = [selectedOrder[idx], selectedOrder[idx - 1]];
+        render();
+      };
+      const downCell = row.addButton(idx < selectedOrder.length - 1 ? "↓" : "");
+      downCell.widthWeight = 15;
+      downCell.onTap = () => {
+        if (idx === selectedOrder.length - 1) return;
+        [selectedOrder[idx], selectedOrder[idx + 1]] = [selectedOrder[idx + 1], selectedOrder[idx]];
+        render();
+      };
+      table.addRow(row);
+    });
+
+    const addHeader = new UITableRow();
+    addHeader.isHeader = true;
+    addHeader.addText("Add more (alphabetical)");
+    table.addRow(addHeader);
+
+    const selectedSet = new Set(selectedOrder);
+    for (const key of addableItemKeys) {
+      if (selectedSet.has(key)) continue;
       const row = new UITableRow();
       row.dismissOnSelect = false;
       const def = TILE_DEFS[key] || BLOCK_DEFS[key];
-      const label = def.label(false);
-      row.addText(selected.has(key) ? `✓  ${label}` : `　  ${label}`);
+      row.addText(def.label(false));
       row.onSelect = () => {
-        if (selected.has(key)) selected.delete(key);
-        else selected.add(key);
+        selectedOrder.push(key);
         render();
       };
       table.addRow(row);
@@ -2017,7 +2066,7 @@ async function runTileConfigurator(mode) {
     const saveRow = new UITableRow();
     const saveBtn = saveRow.addButton("Save as default for blank-parameter widgets");
     saveBtn.onTap = async () => {
-      saveDefaultTiles(selectedInOrder());
+      saveDefaultTiles(selectedOrder);
       saveUnits(units);
       saveTitleMode(titleMode);
       saveMapProvider(mapProvider);
@@ -2037,7 +2086,7 @@ async function runTileConfigurator(mode) {
       const mapToken = mapProvider === "google" ? "googlemaps" : null;
       const columnsToken = columns !== 3 ? `cols${columns}` : null;
       const vehicleToken = vehicles.length > 1 && selectedVehicleVin !== loadActiveVin() ? selectedVehicleVin : null;
-      const paramStr = [...selectedInOrder(), units, titleToken, mapToken, columnsToken, vehicleToken]
+      const paramStr = [...selectedOrder, units, titleToken, mapToken, columnsToken, vehicleToken]
         .filter(Boolean)
         .join(",");
       Pasteboard.copyString(paramStr);

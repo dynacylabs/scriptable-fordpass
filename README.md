@@ -152,23 +152,27 @@ widget → Edit Widget → Parameter) — a comma-separated list of item names (
 defaults in the next section — but you don't have to type this by hand:
 
 Run the script (tap it, don't just view the widget) → **Configure widget (basic)** or
-**Configure widget (advanced)** opens a checklist (sorted alphabetically by name, to make one
-item easy to find in a long list): tap a row to toggle that tile on/off, tap Units to flip
-imperial/metric, tap Title to cycle the header, tap Map to switch between Apple Maps and Google
-Maps for the `location` block's link, tap Columns to cycle 2/3/4 tiles per row (the `newrow`
-manual-row-break token isn't in this checklist — it can repeat at arbitrary positions, which
-doesn't fit an on/off list, so it's Parameter-field-only, see below), tap `"Go Home" after widget
-commands` to turn that on/off (saves immediately, unlike the rows below — see Returning to the
-home screen above), then either:
+**Configure widget (advanced)** opens three sections: tap Units to flip imperial/metric, tap
+Title to cycle the header, tap Map to switch between Apple Maps and Google Maps for the
+`location` block's link, tap Columns to cycle 2/3/4 tiles per row, tap `"Go Home" after widget
+commands` to turn that on/off (saves immediately, unlike everything below — see Returning to the
+home screen above); then **Selected** — every item you've already added, *in the order the
+widget will show them*, each row with ↑/↓ buttons to move it earlier/later (Scriptable's picker
+UI has no drag-and-drop, so this is the practical equivalent — tap a row's label to remove it
+entirely, same single-tap gesture as before); then **Add more** — everything not yet added,
+alphabetical for easy browsing, tap a row to add it to the end of Selected. (The `newrow`
+manual-row-break token isn't offered in either list — it can repeat at arbitrary positions,
+which doesn't fit an add-once/reorder model, so it's Parameter-field-only, see below.) Then
+either:
 
-**Basic** shows only the commonly-useful items — the stuff most people want on a parked-vehicle
-dashboard. **Advanced** shows everything Basic does, plus driving-only telemetry (speed, pedals,
-torque, RPM, trip stats, etc.) and a few raw/unconfirmed signals (`ambientTemp`,
-`xevPlugCharger`, the accelerometer, custom metrics) — see Status below for why those are kept
-out of Basic. Either mode can save or copy a selection that includes items picked in the other
-mode; Basic just doesn't show them to toggle. Which mode you're in doesn't affect the actual
-tile order on the widget — that's always governed by this reference's order below, regardless of
-how the picker list happened to be sorted while you were choosing.
+**Basic**'s "Add more" list shows only the commonly-useful items — the stuff most people want on
+a parked-vehicle dashboard. **Advanced**'s shows everything Basic does, plus driving-only
+telemetry (speed, pedals, torque, RPM, trip stats, etc.) and a few raw/unconfirmed signals
+(`ambientTemp`, `xevPlugCharger`, the accelerometer, custom metrics) — see Status below for why
+those are kept out of Basic. Either mode's Selected section still shows (and lets you reorder or
+remove) anything already added from the other mode — e.g. an advanced item you added earlier
+stays visible and reorderable even while Add more is showing the basic list; it's just not
+offered there a second time.
 
 - **Save as default for blank-parameter widgets** — applies to every widget whose Parameter
   field is empty (the common case if you only have one widget).
@@ -486,3 +490,11 @@ particular is worth a close look in the next screenshot round.
 spacer per row (not multiple competing columns like the grids above), the value already lands
 flush against the same right edge on every row regardless of label length, so there was no actual
 misalignment there to fix.
+
+A fifth round made the configurator reorderable in response to feedback that hand-editing the
+Parameter field was the only way to control item order. Checked Scriptable's own docs first:
+`UITable`/`UITableRow` has no drag-and-drop or move API at all -- rows render in whatever order
+`addRow()` was called, with no documented way to change that afterward. So reordering is ↑/↓
+buttons per row instead (the practical equivalent given the platform), and the configurator's
+"which items" and "what order" are now the same single list (Selected) rather than order being
+implicitly whatever TILE_DEFS/BLOCK_DEFS happened to declare -- see Configuring a widget above.
