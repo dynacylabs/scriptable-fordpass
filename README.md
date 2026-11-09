@@ -155,8 +155,11 @@ Run the script (tap it, don't just view the widget) → **Configure widget (basi
 **Configure widget (advanced)** opens a checklist (sorted alphabetically by name, to make one
 item easy to find in a long list): tap a row to toggle that tile on/off, tap Units to flip
 imperial/metric, tap Title to cycle the header, tap Map to switch between Apple Maps and Google
-Maps for the `location` block's link, tap `"Go Home" after widget commands` to turn that on/off
-(saves immediately, unlike the rows below — see Returning to the home screen above), then either:
+Maps for the `location` block's link, tap Columns to cycle 2/3/4 tiles per row (the `newrow`
+manual-row-break token isn't in this checklist — it can repeat at arbitrary positions, which
+doesn't fit an on/off list, so it's Parameter-field-only, see below), tap `"Go Home" after widget
+commands` to turn that on/off (saves immediately, unlike the rows below — see Returning to the
+home screen above), then either:
 
 **Basic** shows only the commonly-useful items — the stuff most people want on a parked-vehicle
 dashboard. **Advanced** shows everything Basic does, plus driving-only telemetry (speed, pedals,
@@ -178,8 +181,9 @@ how the picker list happened to be sorted while you were choosing.
 A widget's Parameter field is a single text field, used as a comma-separated list mixing two
 kinds of tokens — order doesn't matter except for item order:
 
-- Tile names (each takes a third of a row, 3 to a row), in the order you want them shown:
-  `doors` (collapsed, one line), `fuel` (fuel level or EV charge %), `range`, `odometer`,
+- Tile names (3 to a row by default — see `cols2`/`cols3`/`cols4` and `newrow` below to change
+  that), in the order you want them shown: `doors` (collapsed, one line), `fuel` (fuel level or
+  EV charge %), `range`, `odometer`,
   `outside` (outside temp), `oil` (oil life, ICE only), `battery12v` (12V battery), `tires` — a
   one-word summary ("OK", or e.g. "1 Low" / "2 issues") of Ford's own per-wheel verdict,
   `windows` — "CLOSED", "OPEN", or e.g. "1 OPEN" if some but not all are open, `alarm` (e.g.
@@ -227,11 +231,22 @@ kinds of tokens — order doesn't matter except for item order:
 - `notitle`, to hide the "FordPass" header entirely and reclaim that space.
 - `applemaps` or `googlemaps`, to pin that widget's `location` link to a specific maps app
   regardless of the saved preference (default is Apple Maps).
+- `cols2`, `cols3`, or `cols4`, to pin that widget's tiles-per-row regardless of the saved
+  preference (default is 3) — e.g. 2 wider tiles per row on a small widget, or 4 narrower ones
+  on a large one.
+- `newrow`, as many times as you like, anywhere in the tile-name list — forces whatever tiles
+  came before it onto their own row(s) immediately, even if that's fewer than a full row, instead
+  of auto-wrapping only once `cols` tiles have accumulated. The next tile after it starts a fresh
+  row. A full-width block (`doorsVerbose`, `image`, etc.) already does this implicitly, so
+  `newrow` is only needed to break up tiles early.
 - A vehicle's VIN (if you've added more than one — see Multiple vehicles above), to pin that
   widget to a specific vehicle regardless of which one is set as account-active.
 
 Example: `doorsVerbose,fuel,odometer,metric,notitle` shows the door table, then fuel + odometer
-on their own row below it, in metric, with no header. Leave it blank to get the saved default
+on their own row below it, in metric, with no header. Another example:
+`doors,fuel,newrow,range,odometer,oil,battery12v,cols4` puts doors+fuel on their own row (2
+tiles, instead of waiting for `cols4` to fill a full row of 4 before wrapping), then
+range/odometer/oil/battery12v together as one row of 4. Leave it blank to get the saved default
 (configured as above), or — if you've never opened the configurator — the built-in default
 (small widgets show just doors + fuel; medium and large show all tiles, header shown). An
 unrecognized token is silently ignored rather than erroring, so a typo just falls back to the
@@ -435,3 +450,12 @@ case of the same underlying "fixed canvas, no scrolling" limitation: a medium wi
 clips at both ends — the header text itself gets cut off at the top and the "Updated" timestamp
 disappears off the bottom. Same guidance as the kitchen-sink case: `notitle`, or fewer tiles,
 for a widget that's already packing 3+ full rows.
+
+A third round added actual layout control in response to feedback that the ordering-only model
+(select items, they wrap at a fixed 3 per row) wasn't enough say over where things land: tiles
+per row is now configurable (`cols2`/`cols3`/`cols4`, or the Columns row in either configurator),
+and `newrow` lets a Parameter field force a row break early instead of only ever auto-wrapping at
+that column count. Together with `imageTile` from the round above, this covers the two concrete
+asks (full-width layout, a non-dominant inline image) plus general placement control, without
+building a full drag-and-drop layout editor, which felt like more complexity than a single-file
+widget config warrants.

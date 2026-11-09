@@ -80,6 +80,7 @@ const KEYCHAIN_DEFAULT_TILES_KEY = "fordconnect_default_tiles";
 const KEYCHAIN_TITLE_MODE_KEY = "fordconnect_title_mode";
 const KEYCHAIN_MAP_PROVIDER_KEY = "fordconnect_map_provider";
 const KEYCHAIN_GO_HOME_ENABLED_KEY = "fordconnect_go_home_enabled";
+const KEYCHAIN_TILE_COLUMNS_KEY = "fordconnect_tile_columns";
 const EXPIRY_SKEW_MS = 60 * 1000;
 
 // ===================== small helpers (no Web APIs in Scriptable's JS runtime) =====================
@@ -253,6 +254,18 @@ function loadMapProvider() {
 
 function saveMapProvider(provider) {
   Keychain.set(KEYCHAIN_MAP_PROVIDER_KEY, provider);
+}
+
+// How many tiles accumulate into a row before wrapping to the next one (2-4; default 3,
+// matching the original fixed behavior). Stored as a string in Keychain like everything
+// else here, parsed back to a number on read.
+function loadTileColumns() {
+  const stored = Keychain.contains(KEYCHAIN_TILE_COLUMNS_KEY) ? parseInt(Keychain.get(KEYCHAIN_TILE_COLUMNS_KEY), 10) : 3;
+  return [2, 3, 4].includes(stored) ? stored : 3;
+}
+
+function saveTileColumns(columns) {
+  Keychain.set(KEYCHAIN_TILE_COLUMNS_KEY, String(columns));
 }
 
 // Scriptable has no API to check whether a named Shortcut actually exists -- Shortcuts
@@ -1733,7 +1746,6 @@ const TILE_DEFS = {
 
 const DEFAULT_TILES_SMALL = ["doors", "fuel"];
 const DEFAULT_TILES_FULL = ["doors", "fuel", "range", "odometer", "outside", "oil", "battery12v"];
-const TILES_PER_ROW = 3;
 
 // Full-width elements — unlike TILE_DEFS entries, these render themselves (not as a
 // 1/3-width grid cell), so they get their own row whenever they appear in the
@@ -1811,6 +1823,7 @@ function parseWidgetParameter(paramStr) {
   let units = null;
   let titleMode = null;
   let mapProvider = null;
+  let columns = null;
   let vin = null;
   const items = [];
   const vehicleVinsByLower = Object.fromEntries(loadVehicles().map((v) => [v.vin.toLowerCase(), v.vin]));
@@ -1819,10 +1832,14 @@ function parseWidgetParameter(paramStr) {
     else if (t === "notitle") titleMode = "hidden";
     else if (t === "applemaps") mapProvider = "apple";
     else if (t === "googlemaps") mapProvider = "google";
+    else if (t === "cols2" || t === "cols3" || t === "cols4") columns = parseInt(t.slice(4), 10);
+    // "newrow" isn't a TILE_DEFS/BLOCK_DEFS key -- it's a sentinel kept in `items` at its
+    // original position so buildWidget can force a line break there (see flushTiles).
+    else if (t === "newrow") items.push("newrow");
     else if (vehicleVinsByLower[t]) vin = vehicleVinsByLower[t];
     else if (ITEM_KEYS_BY_LOWER[t]) items.push(ITEM_KEYS_BY_LOWER[t]);
   }
-  return { units, titleMode, mapProvider, vin, items: items.length ? items : null };
+  return { units, titleMode, mapProvider, columns, vin, items: items.length ? items : null };
 }
 
 // Interactive picker (run the script, not from a widget) so the Parameter mini-language
@@ -1849,12 +1866,14 @@ async function runTileConfigurator(mode) {
   let units = loadUnits();
   let titleMode = loadTitleMode();
   let mapProvider = loadMapProvider();
+  let columns = loadTileColumns();
   let selectedVehicleVin = loadActiveVin();
   const vehicles = loadVehicles();
   const TITLE_MODE_LABELS = { fordpass: '"FordPass"', hidden: "hidden" };
   const TITLE_MODE_CYCLE = ["fordpass", "hidden"];
   const MAP_PROVIDER_LABELS = { apple: "Apple Maps", google: "Google Maps" };
   const MAP_PROVIDER_CYCLE = ["apple", "google"];
+  const COLUMNS_CYCLE = [2, 3, 4];
 
   const table = new UITable();
   table.showSeparators = true;
@@ -1901,6 +1920,15 @@ async function runTileConfigurator(mode) {
       render();
     };
     table.addRow(mapRow);
+
+    const columnsRow = new UITableRow();
+    columnsRow.dismissOnSelect = false;
+    columnsRow.addText("Columns", `${columns} tiles per row`);
+    columnsRow.onSelect = () => {
+      columns = COLUMNS_CYCLE[(COLUMNS_CYCLE.indexOf(columns) + 1) % COLUMNS_CYCLE.length];
+      render();
+    };
+    table.addRow(columnsRow);
 
     if (vehicles.length > 1) {
       const vehicleRow = new UITableRow();
@@ -1964,6 +1992,7 @@ async function runTileConfigurator(mode) {
       saveUnits(units);
       saveTitleMode(titleMode);
       saveMapProvider(mapProvider);
+      saveTileColumns(columns);
       const a = new Alert();
       a.title = "Saved";
       a.message = "Widgets with a blank Parameter field will use this set next refresh.";
@@ -1977,8 +2006,11 @@ async function runTileConfigurator(mode) {
     copyBtn.onTap = async () => {
       const titleToken = titleMode === "hidden" ? "notitle" : null;
       const mapToken = mapProvider === "google" ? "googlemaps" : null;
+      const columnsToken = columns !== 3 ? `cols${columns}` : null;
       const vehicleToken = vehicles.length > 1 && selectedVehicleVin !== loadActiveVin() ? selectedVehicleVin : null;
-      const paramStr = [...selectedInOrder(), units, titleToken, mapToken, vehicleToken].filter(Boolean).join(",");
+      const paramStr = [...selectedInOrder(), units, titleToken, mapToken, columnsToken, vehicleToken]
+        .filter(Boolean)
+        .join(",");
       Pasteboard.copyString(paramStr);
       const a = new Alert();
       a.title = "Copied";
@@ -2011,6 +2043,7 @@ async function buildWidget() {
   const units = paramCfg.units || loadUnits();
   const titleMode = paramCfg.titleMode || loadTitleMode();
   const mapProvider = paramCfg.mapProvider || loadMapProvider();
+  const columns = paramCfg.columns || loadTileColumns();
   const compact = config.widgetFamily === "small";
   const itemKeys = paramCfg.items || loadDefaultTiles() || (compact ? DEFAULT_TILES_SMALL : DEFAULT_TILES_FULL);
 
@@ -2025,16 +2058,18 @@ async function buildWidget() {
 
     const isEv = metric(status, "xevBatteryStateOfCharge") != null;
 
-    // Tiles (TILE_DEFS) accumulate into rows of up to 3; a block (BLOCK_DEFS) is
+    // Tiles (TILE_DEFS) accumulate into rows of up to `columns`; a block (BLOCK_DEFS) is
     // full-width, so it flushes whatever tiles were pending first, then renders itself.
+    // The "newrow" sentinel (see parseWidgetParameter) also forces a flush, letting a
+    // Parameter field break a row early instead of always auto-wrapping at `columns`.
     let pendingTiles = [];
     let needsSpacer = false;
 
     const flushTiles = async () => {
-      for (let i = 0; i < pendingTiles.length; i += TILES_PER_ROW) {
+      for (let i = 0; i < pendingTiles.length; i += columns) {
         if (needsSpacer) widget.addSpacer(10);
         needsSpacer = true;
-        const rowKeys = pendingTiles.slice(i, i + TILES_PER_ROW);
+        const rowKeys = pendingTiles.slice(i, i + columns);
         const row = widget.addStack();
         row.layoutHorizontally();
         for (let idx = 0; idx < rowKeys.length; idx++) {
@@ -2051,7 +2086,9 @@ async function buildWidget() {
     };
 
     for (const key of itemKeys) {
-      if (TILE_DEFS[key]) {
+      if (key === "newrow") {
+        await flushTiles();
+      } else if (TILE_DEFS[key]) {
         pendingTiles.push(key);
       } else if (BLOCK_DEFS[key]) {
         await flushTiles();
