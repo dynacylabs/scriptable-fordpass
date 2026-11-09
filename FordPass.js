@@ -805,24 +805,47 @@ async function runMenu() {
 
 // ===================== widget =====================
 
-function addTile(stack, label, value) {
-  const col = stack.addStack();
-  col.layoutVertically();
+function addTileLabel(col, label) {
   const l = col.addText(label);
   l.font = Font.systemFont(10);
   l.textColor = Color.gray();
+}
+
+function addTile(stack, label, value) {
+  const col = stack.addStack();
+  col.layoutVertically();
+  addTileLabel(col, label);
   const v = col.addText(value == null ? "—" : String(value));
   v.font = Font.boldSystemFont(15);
 }
 
-// A fixed 16pt gap between a verbose block's 2 columns left most of a medium/large
-// widget's width empty (confirmed via screenshot review -- the grid only used the left
-// ~40% of the widget). Widening the gap on wider families spreads the same 2-column
-// layout across the actual available width instead of changing the layout itself.
-const VERBOSE_GRID_GAP_BY_FAMILY = { small: 16, medium: 70, large: 70 };
-function gridColumnGap() {
-  return VERBOSE_GRID_GAP_BY_FAMILY[config.widgetFamily] || 16;
+// `imageTile`'s inline alternative to the full-width `image` block -- a tile-sized
+// vehicle photo that sits in a row with 2 other tiles instead of taking its own row.
+async function addImageTile(stack, label, vin, regionCfg) {
+  const col = stack.addStack();
+  col.layoutVertically();
+  addTileLabel(col, label);
+  const token = await getValidToken(regionCfg);
+  const img = await fetchVehicleImage(token, vin, regionCfg);
+  if (!img) {
+    const v = col.addText("—");
+    v.font = Font.boldSystemFont(15);
+    return;
+  }
+  const wi = col.addImage(img);
+  wi.imageSize = INLINE_IMAGE_SIZE_BY_FAMILY[config.widgetFamily] || INLINE_IMAGE_SIZE_BY_FAMILY.medium;
+  wi.applyFittingContentMode();
+  wi.leftAlignImage();
 }
+
+// Every multi-column row below separates its columns with stack.addSpacer() (no
+// argument = a flexible spacer that fills whatever space is left, same spring
+// behavior as a UIStackView spacer) rather than a fixed-width gap. A fixed gap left a
+// visible chunk of unused space on the right of a medium/large widget (confirmed via
+// screenshot review -- tiles/grids clustered on the left instead of using the full
+// widget width); a flexible spacer instead distributes the row's columns across
+// whatever width is actually available: the first column sits at the left edge, the
+// last at the right edge, with any others evenly spaced between.
 
 // ===================== doors (verbose layout) =====================
 //
@@ -892,14 +915,14 @@ function renderDoorsVerbose(widget, status, region) {
   const row1 = widget.addStack();
   row1.layoutHorizontally();
   addDoorCell(row1, grid.front.left.label, grid.front.left.open, grid.front.left.lock);
-  row1.addSpacer(gridColumnGap());
+  row1.addSpacer();
   addDoorCell(row1, grid.front.right.label, grid.front.right.open, grid.front.right.lock);
 
   widget.addSpacer(6);
   const row2 = widget.addStack();
   row2.layoutHorizontally();
   addDoorCell(row2, grid.rear.left.label, grid.rear.left.open, grid.rear.left.lock);
-  row2.addSpacer(gridColumnGap());
+  row2.addSpacer();
   addDoorCell(row2, grid.rear.right.label, grid.rear.right.open, grid.rear.right.lock);
 
   if (grid.tailgate) {
@@ -983,14 +1006,14 @@ function renderTiresVerbose(widget, status, units) {
   const row1 = widget.addStack();
   row1.layoutHorizontally();
   addTireCell(row1, fl);
-  row1.addSpacer(gridColumnGap());
+  row1.addSpacer();
   addTireCell(row1, fr);
 
   widget.addSpacer(6);
   const row2 = widget.addStack();
   row2.layoutHorizontally();
   addTireCell(row2, rl);
-  row2.addSpacer(gridColumnGap());
+  row2.addSpacer();
   addTireCell(row2, rr);
 }
 
@@ -1065,14 +1088,14 @@ function renderWindowsVerbose(widget, status, region) {
   const row1 = widget.addStack();
   row1.layoutHorizontally();
   addWindowCell(row1, grid.front.left.label, grid.front.left.value);
-  row1.addSpacer(gridColumnGap());
+  row1.addSpacer();
   addWindowCell(row1, grid.front.right.label, grid.front.right.value);
 
   widget.addSpacer(6);
   const row2 = widget.addStack();
   row2.layoutHorizontally();
   addWindowCell(row2, grid.rear.left.label, grid.rear.left.value);
-  row2.addSpacer(gridColumnGap());
+  row2.addSpacer();
   addWindowCell(row2, grid.rear.right.label, grid.rear.right.value);
 }
 
@@ -1126,7 +1149,7 @@ function renderSeatBeltVerbose(widget, status) {
     row.layoutHorizontally();
     addSeatBeltCell(row, belts[i]);
     if (belts[i + 1]) {
-      row.addSpacer(gridColumnGap());
+      row.addSpacer();
       addSeatBeltCell(row, belts[i + 1]);
     }
   }
@@ -1488,14 +1511,24 @@ async function fetchVehicleImage(token, vin, regionCfg) {
 // contributor to that (90pt tall eats most of a small/medium widget's ~155pt height),
 // so it's sized down per family here. These are the standard iPhone widget point
 // sizes; real sizes vary slightly by device but this is close enough to budget by.
-// "large" was bumped up from 290x90 after screenshot review showed a large widget with
-// just `image` (no other tiles) leaving most of the widget's height empty below a small
-// image -- small/medium stay conservative since those are more likely to be combined
-// with several tiles, where the original small-image reasoning above still applies.
+// (A prior pass tried bumping "large" up to 300x160 to fill a large-only widget's empty
+// space, but that made the full-width `image` block dominate the widget too much --
+// reverted. `imageTile` below is the better answer to "the image is too big and
+// doesn't need its own row": a small inline version that sits among other tiles.)
 const IMAGE_SIZE_BY_FAMILY = {
   small: new Size(120, 40),
   medium: new Size(260, 55),
-  large: new Size(300, 160),
+  large: new Size(290, 90),
+};
+
+// A separate, smaller size for `imageTile` (the 1/3-width inline tile version, as
+// opposed to `image`'s full-width row) -- sized to actually fit a tile column instead
+// of just using IMAGE_SIZE_BY_FAMILY's already-small sizes, which are still too wide
+// for a column shared with 2 other tiles.
+const INLINE_IMAGE_SIZE_BY_FAMILY = {
+  small: new Size(50, 18),
+  medium: new Size(90, 30),
+  large: new Size(90, 30),
 };
 
 async function renderVehicleImage(widget, vin, regionCfg) {
@@ -1685,6 +1718,16 @@ const TILE_DEFS = {
       const m = accelerationMagnitude(status);
       return m == null ? null : m.toFixed(2);
     },
+  },
+  // A tile-sized alternative to the `image` block -- same vehicle photo, but it sits
+  // in a row with 2 other tiles instead of taking its own full-width row. `renderTile`
+  // is this registry's escape hatch for a tile that isn't just label+value text (the
+  // only other entry with one is none yet -- the rest all use `value`); flushTiles
+  // checks for it and calls it instead of addTile() when present.
+  imageTile: {
+    label: () => "VEHICLE",
+    basic: true,
+    renderTile: async (row, label, status, vin, regionCfg) => addImageTile(row, label, vin, regionCfg),
   },
 };
 
@@ -1987,18 +2030,22 @@ async function buildWidget() {
     let pendingTiles = [];
     let needsSpacer = false;
 
-    const flushTiles = () => {
+    const flushTiles = async () => {
       for (let i = 0; i < pendingTiles.length; i += TILES_PER_ROW) {
         if (needsSpacer) widget.addSpacer(10);
         needsSpacer = true;
         const rowKeys = pendingTiles.slice(i, i + TILES_PER_ROW);
         const row = widget.addStack();
         row.layoutHorizontally();
-        rowKeys.forEach((key, idx) => {
-          const def = TILE_DEFS[key];
-          addTile(row, def.label(isEv), def.value(status, units, isEv));
-          if (idx < rowKeys.length - 1) row.addSpacer(16);
-        });
+        for (let idx = 0; idx < rowKeys.length; idx++) {
+          const def = TILE_DEFS[rowKeys[idx]];
+          if (def.renderTile) {
+            await def.renderTile(row, def.label(isEv), status, vin, REGIONS[region], units, isEv);
+          } else {
+            addTile(row, def.label(isEv), def.value(status, units, isEv));
+          }
+          if (idx < rowKeys.length - 1) row.addSpacer();
+        }
       }
       pendingTiles = [];
     };
@@ -2007,13 +2054,13 @@ async function buildWidget() {
       if (TILE_DEFS[key]) {
         pendingTiles.push(key);
       } else if (BLOCK_DEFS[key]) {
-        flushTiles();
+        await flushTiles();
         if (needsSpacer) widget.addSpacer(10);
         needsSpacer = true;
         await BLOCK_DEFS[key].render(widget, status, vin, region, units, isEv, mapProvider);
       }
     }
-    flushTiles();
+    await flushTiles();
 
     widget.addSpacer(8);
     const updatedAt = metric(status, "doorLockStatus.0.updateTime") || metric(status, "odometer.updateTime");

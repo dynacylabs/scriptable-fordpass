@@ -196,7 +196,9 @@ kinds of tokens — order doesn't matter except for item order:
   accelerator pedal %, `brakePedal` — raw status, `brakeTorque`, `engineSpeed` (RPM), `gear`,
   `transTorque`, `wheelTorque` — raw status, `yawRate`, `tripEconomy`, `tripEvDistance`, and
   `acceleration` — raw accelerometer magnitude. Several of these show a bare number with no
-  unit label because the real unit couldn't be confirmed (see Status below).
+  unit label because the real unit couldn't be confirmed (see Status below). `imageTile` — the
+  vehicle's photo sized to fit a tile column instead of its own row — see `image` below for the
+  full-width version.
 - Full-width block names, each always on its own row: `doorsVerbose` — an alternative to
   `doors`, a 2×2 table (front driver/passenger side correctly placed per your region's driving
   side, rear left/right, plus a tailgate row if present). `tiresVerbose` — an alternative to
@@ -218,7 +220,8 @@ kinds of tokens — order doesn't matter except for item order:
   `commands` — Lock/Unlock/Start/Stop/Refresh buttons, medium/large widgets only; tapping one
   opens the app to a confirm/cancel
   dialog before anything actually sends, so a stray tap can't fire a real command (see Write
-  commands below). `image` — the vehicle's photo, as shown in the real FordPass app.
+  commands below). `image` — the vehicle's photo on its own row, as shown in the real FordPass
+  app; see `imageTile` above for a smaller version that fits in a row with other tiles instead.
 - `imperial` or `metric`, to pin that widget to a unit system regardless of the saved
   preference (see Units below).
 - `notitle`, to hide the "FordPass" header entirely and reclaim that space.
@@ -400,17 +403,24 @@ Found via a real-device screenshot review pass (15 screenshots across widget siz
 verbose block/image/location/commands combination), not just reasoned about:
 
 - The 2-column verbose grids (`doorsVerbose`, `tiresVerbose`, `windowsVerbose`,
-  `seatBeltVerbose`) used a fixed 16pt gap between columns regardless of widget size, which left
-  roughly the right half of a medium/large widget empty. Fixed by widening that gap on
-  medium/large widgets (`gridColumnGap()` in the script) so the same 2-column layout spreads
-  across the actual available width instead of hugging the left edge.
+  `seatBeltVerbose`) and the 3-tile rows used a fixed-width gap between columns regardless of
+  widget size, which left the whole layout clustered on the left with a visible unused strip on
+  the right of a medium/large widget — not just the verbose grids, every tile row had this too.
+  A first pass tried a wider, per-family-tuned fixed gap for the verbose grids, which helped but
+  still didn't reach the right edge. Replaced that with a flexible spacer (`stack.addSpacer()`
+  with no argument — a spring that fills whatever space is left, same as a UIStackView spacer)
+  between every column in both the tile rows and the verbose grids: the first column now sits at
+  the left edge, the last at the right edge, with equal spacing for anything in between,
+  regardless of widget width — no per-family tuning needed.
 - `seatBeltVerbose` originally put each occupant on its own full-width row with a flexible
   spacer pushing the buckled/unbuckled value to the far right edge — fine with 1 occupant, but
   an oddly large gap with the label. Redesigned to match the doors/tires/windows cell style
   (label above, bold value below), 2 occupants per row.
-- `image` alone on a large widget left most of the widget's height empty below a small photo —
-  bumped the large-family image size up (small/medium left alone, since those are more often
-  combined with several tiles where the original small-image sizing still matters more).
+- `image` (the full-width vehicle photo block) was bumped up in a first pass to fill a large
+  widget's otherwise-empty space when used alone, but that made it dominate the widget when
+  combined with other content — reverted back to its original size. Added `imageTile` instead:
+  a small version of the same photo sized to sit in a tile row next to 2 other tiles, for
+  "the photo doesn't need its own row" cases.
 - A widget's canvas size is fixed by iOS per family with no scrolling, so selecting more content
   than fits (confirmed live with a "kitchen sink" large widget selecting everything) just clips
   silently at the bottom — there's no way around this in Scriptable's widget API, so it's a
