@@ -1353,17 +1353,17 @@ function renderCommands(widget, vin) {
   title.textColor = Color.gray();
   widget.addSpacer(4);
 
+  // All 5 buttons comfortably fit one row on a medium/large widget (confirmed via
+  // screenshot review -- a 3+2 two-row split, from when this was written defensively
+  // for an unknown number of commands, left obvious unused room). Same flexible-spacer
+  // approach as the tile rows and verbose grids, so the row still spans the full width.
   const keys = Object.keys(WRITE_COMMANDS);
-  for (let i = 0; i < keys.length; i += 3) {
-    if (i > 0) widget.addSpacer(6);
-    const row = widget.addStack();
-    row.layoutHorizontally();
-    const rowKeys = keys.slice(i, i + 3);
-    rowKeys.forEach((key, idx) => {
-      addCommandButton(row, key, vin);
-      if (idx < rowKeys.length - 1) row.addSpacer(8);
-    });
-  }
+  const row = widget.addStack();
+  row.layoutHorizontally();
+  keys.forEach((key, idx) => {
+    addCommandButton(row, key, vin);
+    if (idx < keys.length - 1) row.addSpacer();
+  });
 
   if (config.widgetFamily === "small") {
     const note = widget.addText("Open the app to use commands");

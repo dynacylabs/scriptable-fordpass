@@ -459,3 +459,8 @@ that column count. Together with `imageTile` from the round above, this covers t
 asks (full-width layout, a non-dominant inline image) plus general placement control, without
 building a full drag-and-drop layout editor, which felt like more complexity than a single-file
 widget config warrants.
+
+`commands` originally split its 5 buttons into two rows (3, then 2) defensively, from before it
+was clear how many commands there'd ever be -- with only 5 fixed buttons that never grows, and
+confirmed room to spare on a medium/large widget, that split served no purpose. Now a single row
+of all 5, same flexible-spacer approach as everything else.
