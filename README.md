@@ -464,3 +464,25 @@ widget config warrants.
 was clear how many commands there'd ever be -- with only 5 fixed buttons that never grows, and
 confirmed room to spare on a medium/large widget, that split served no purpose. Now a single row
 of all 5, same flexible-spacer approach as everything else.
+
+A fourth round replaced the flexible-spacer approach (from the first two rounds) with actual
+fixed-width columns, after feedback that things still "weren't aligned" -- a flexible spacer
+fills a *single* row's leftover width fine, but each row's column boundaries end up wherever
+that row's own content happens to end, so one row's 2nd column doesn't line up with another
+row's 2nd column (e.g. DOORS' front-row cell 2 starting at a different x than its rear-row cell
+2, since "DRIVER"/"PASSENGER" and "REAR LEFT"/"REAR RIGHT" aren't the same width). Every
+multi-column row (tile rows, `doorsVerbose`/`tiresVerbose`/`windowsVerbose`/`seatBeltVerbose`,
+`commands`) now divides an approximate per-family content-width budget (`columnWidth()` in the
+script) into equal, fixed-width columns with a consistent gap, so columns genuinely line up into
+a grid regardless of what each row's own content happens to be. The budget itself is an estimate
+(same "close enough, real widths vary by device" caveat as `IMAGE_SIZE_BY_FAMILY`) -- if a future
+screenshot round shows columns too narrow or too wide, that's the number to retune. One place
+this got tight: 5 equal-width `commands` buttons leaves ~52pt each on a medium/large widget,
+likely too narrow for "REFRESH" at the original font/padding -- tightened the button padding and
+font size and added `minimumScaleFactor` (shrink-to-fit) as a safety net, but this one in
+particular is worth a close look in the next screenshot round.
+
+`customMetricsVerbose`'s label-left/value-right rows were left alone -- with only one flexible
+spacer per row (not multiple competing columns like the grids above), the value already lands
+flush against the same right edge on every row regardless of label length, so there was no actual
+misalignment there to fix.

@@ -818,15 +818,35 @@ async function runMenu() {
 
 // ===================== widget =====================
 
+// Approximate usable content width per widget family, in points, inside the rounded-
+// rect background (real widths vary slightly by device -- close enough to budget
+// column widths by, same approach as IMAGE_SIZE_BY_FAMILY below). Every multi-column
+// row (tile rows, the verbose grids, the commands row) divides this width into equal,
+// *fixed*-width columns rather than letting each column's width follow its own
+// content: a flexible spacer between content-sized columns (the previous approach)
+// fills the full row width fine for one row in isolation, but each row's column
+// boundaries land wherever that row's own content happens to end, so they don't line
+// up between rows -- confirmed via screenshot review ("things aren't aligned"). A
+// fixed width per column, shared across every row in the same grid, is what actually
+// makes rows line up into a real grid.
+const WIDGET_CONTENT_WIDTH_BY_FAMILY = { small: 130, medium: 300, large: 300 };
+const COLUMN_GAP = 10;
+
+function columnWidth(numColumns) {
+  const total = WIDGET_CONTENT_WIDTH_BY_FAMILY[config.widgetFamily] || WIDGET_CONTENT_WIDTH_BY_FAMILY.medium;
+  return (total - COLUMN_GAP * (numColumns - 1)) / numColumns;
+}
+
 function addTileLabel(col, label) {
   const l = col.addText(label);
   l.font = Font.systemFont(10);
   l.textColor = Color.gray();
 }
 
-function addTile(stack, label, value) {
+function addTile(stack, label, value, width) {
   const col = stack.addStack();
   col.layoutVertically();
+  col.size = new Size(width, 0); // 0 height = auto, only width is fixed
   addTileLabel(col, label);
   const v = col.addText(value == null ? "—" : String(value));
   v.font = Font.boldSystemFont(15);
@@ -834,9 +854,10 @@ function addTile(stack, label, value) {
 
 // `imageTile`'s inline alternative to the full-width `image` block -- a tile-sized
 // vehicle photo that sits in a row with 2 other tiles instead of taking its own row.
-async function addImageTile(stack, label, vin, regionCfg) {
+async function addImageTile(stack, label, vin, regionCfg, width) {
   const col = stack.addStack();
   col.layoutVertically();
+  col.size = new Size(width, 0);
   addTileLabel(col, label);
   const token = await getValidToken(regionCfg);
   const img = await fetchVehicleImage(token, vin, regionCfg);
@@ -850,15 +871,6 @@ async function addImageTile(stack, label, vin, regionCfg) {
   wi.applyFittingContentMode();
   wi.leftAlignImage();
 }
-
-// Every multi-column row below separates its columns with stack.addSpacer() (no
-// argument = a flexible spacer that fills whatever space is left, same spring
-// behavior as a UIStackView spacer) rather than a fixed-width gap. A fixed gap left a
-// visible chunk of unused space on the right of a medium/large widget (confirmed via
-// screenshot review -- tiles/grids clustered on the left instead of using the full
-// widget width); a flexible spacer instead distributes the row's columns across
-// whatever width is actually available: the first column sits at the left edge, the
-// last at the right edge, with any others evenly spaced between.
 
 // ===================== doors (verbose layout) =====================
 //
@@ -902,9 +914,10 @@ function buildDoorGrid(status, region) {
   };
 }
 
-function addDoorCell(stack, label, openVal, lockVal) {
+function addDoorCell(stack, label, openVal, lockVal, width) {
   const col = stack.addStack();
   col.layoutVertically();
+  col.size = new Size(width, 0);
   const l = col.addText(label);
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
@@ -919,6 +932,7 @@ function addDoorCell(stack, label, openVal, lockVal) {
 
 function renderDoorsVerbose(widget, status, region) {
   const grid = buildDoorGrid(status, region);
+  const w = columnWidth(2);
 
   const title = widget.addText("DOORS");
   title.font = Font.systemFont(10);
@@ -927,21 +941,21 @@ function renderDoorsVerbose(widget, status, region) {
 
   const row1 = widget.addStack();
   row1.layoutHorizontally();
-  addDoorCell(row1, grid.front.left.label, grid.front.left.open, grid.front.left.lock);
-  row1.addSpacer();
-  addDoorCell(row1, grid.front.right.label, grid.front.right.open, grid.front.right.lock);
+  addDoorCell(row1, grid.front.left.label, grid.front.left.open, grid.front.left.lock, w);
+  row1.addSpacer(COLUMN_GAP);
+  addDoorCell(row1, grid.front.right.label, grid.front.right.open, grid.front.right.lock, w);
 
   widget.addSpacer(6);
   const row2 = widget.addStack();
   row2.layoutHorizontally();
-  addDoorCell(row2, grid.rear.left.label, grid.rear.left.open, grid.rear.left.lock);
-  row2.addSpacer();
-  addDoorCell(row2, grid.rear.right.label, grid.rear.right.open, grid.rear.right.lock);
+  addDoorCell(row2, grid.rear.left.label, grid.rear.left.open, grid.rear.left.lock, w);
+  row2.addSpacer(COLUMN_GAP);
+  addDoorCell(row2, grid.rear.right.label, grid.rear.right.open, grid.rear.right.lock, w);
 
   if (grid.tailgate) {
     widget.addSpacer(6);
     const row3 = widget.addStack();
-    addDoorCell(row3, "TAILGATE", grid.tailgate, null);
+    addDoorCell(row3, "TAILGATE", grid.tailgate, null, w);
   }
 }
 
@@ -992,9 +1006,10 @@ function tireSummaryText(status) {
   return distinct.length === 1 ? `${bad.length} ${humanizeStatus(distinct[0])}` : `${bad.length} issues`;
 }
 
-function addTireCell(stack, tire) {
+function addTireCell(stack, tire, width) {
   const col = stack.addStack();
   col.layoutVertically();
+  col.size = new Size(width, 0);
   const l = col.addText(tire.label);
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
@@ -1010,6 +1025,7 @@ function addTireCell(stack, tire) {
 
 function renderTiresVerbose(widget, status, units) {
   const [fl, fr, rl, rr] = buildTireGrid(status, units);
+  const w = columnWidth(2);
 
   const title = widget.addText("TIRE PRESSURE");
   title.font = Font.systemFont(10);
@@ -1018,16 +1034,16 @@ function renderTiresVerbose(widget, status, units) {
 
   const row1 = widget.addStack();
   row1.layoutHorizontally();
-  addTireCell(row1, fl);
-  row1.addSpacer();
-  addTireCell(row1, fr);
+  addTireCell(row1, fl, w);
+  row1.addSpacer(COLUMN_GAP);
+  addTireCell(row1, fr, w);
 
   widget.addSpacer(6);
   const row2 = widget.addStack();
   row2.layoutHorizontally();
-  addTireCell(row2, rl);
-  row2.addSpacer();
-  addTireCell(row2, rr);
+  addTireCell(row2, rl, w);
+  row2.addSpacer(COLUMN_GAP);
+  addTireCell(row2, rr, w);
 }
 
 // ===================== window position =====================
@@ -1079,9 +1095,10 @@ function windowSummaryText(status) {
   return openCount === windows.length ? "OPEN" : `${openCount} OPEN`;
 }
 
-function addWindowCell(stack, label, value) {
+function addWindowCell(stack, label, value, width) {
   const col = stack.addStack();
   col.layoutVertically();
+  col.size = new Size(width, 0);
   const l = col.addText(label);
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
@@ -1092,6 +1109,7 @@ function addWindowCell(stack, label, value) {
 
 function renderWindowsVerbose(widget, status, region) {
   const grid = buildWindowGrid(status, region);
+  const w = columnWidth(2);
 
   const title = widget.addText("WINDOWS");
   title.font = Font.systemFont(10);
@@ -1100,16 +1118,16 @@ function renderWindowsVerbose(widget, status, region) {
 
   const row1 = widget.addStack();
   row1.layoutHorizontally();
-  addWindowCell(row1, grid.front.left.label, grid.front.left.value);
-  row1.addSpacer();
-  addWindowCell(row1, grid.front.right.label, grid.front.right.value);
+  addWindowCell(row1, grid.front.left.label, grid.front.left.value, w);
+  row1.addSpacer(COLUMN_GAP);
+  addWindowCell(row1, grid.front.right.label, grid.front.right.value, w);
 
   widget.addSpacer(6);
   const row2 = widget.addStack();
   row2.layoutHorizontally();
-  addWindowCell(row2, grid.rear.left.label, grid.rear.left.value);
-  row2.addSpacer();
-  addWindowCell(row2, grid.rear.right.label, grid.rear.right.value);
+  addWindowCell(row2, grid.rear.left.label, grid.rear.left.value, w);
+  row2.addSpacer(COLUMN_GAP);
+  addWindowCell(row2, grid.rear.right.label, grid.rear.right.value, w);
 }
 
 // ===================== seat belts =====================
@@ -1130,9 +1148,10 @@ function seatBeltSummaryText(status) {
 // row -- originally this was a single-column list with a flexible spacer pushing the
 // value to the far right edge, which looked fine for 1 occupant but left a large,
 // awkward gap on a medium/large widget (confirmed via screenshot review).
-function addSeatBeltCell(stack, belt) {
+function addSeatBeltCell(stack, belt, width) {
   const col = stack.addStack();
   col.layoutVertically();
+  col.size = new Size(width, 0);
   const l = col.addText(humanizeStatus(belt.vehicleOccupantRole || "UNKNOWN"));
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
@@ -1143,6 +1162,7 @@ function addSeatBeltCell(stack, belt) {
 
 function renderSeatBeltVerbose(widget, status) {
   const belts = metricArray(status, "seatBeltStatus");
+  const w = columnWidth(2);
 
   const title = widget.addText("SEAT BELTS");
   title.font = Font.systemFont(10);
@@ -1160,10 +1180,10 @@ function renderSeatBeltVerbose(widget, status) {
     if (i > 0) widget.addSpacer(6);
     const row = widget.addStack();
     row.layoutHorizontally();
-    addSeatBeltCell(row, belts[i]);
+    addSeatBeltCell(row, belts[i], w);
     if (belts[i + 1]) {
-      row.addSpacer();
-      addSeatBeltCell(row, belts[i + 1]);
+      row.addSpacer(COLUMN_GAP);
+      addSeatBeltCell(row, belts[i + 1], w);
     }
   }
 }
@@ -1332,19 +1352,25 @@ function renderLocation(widget, status, mapProvider) {
 // vin is embedded in the URL (not just cmd) so the command acts on whichever vehicle
 // *this* widget is showing, even if it's not the account's active one -- the relaunched
 // script has no other way to know which widget's button was tapped.
-function addCommandButton(row, cmdKey, vin) {
+function addCommandButton(row, cmdKey, vin, width) {
   const def = WRITE_COMMANDS[cmdKey];
   const btn = row.addStack();
   btn.layoutVertically();
   btn.centerAlignContent();
-  btn.setPadding(6, 10, 6, 10);
+  btn.size = new Size(width, 0);
+  // Tighter padding and a slightly smaller font than before -- fitting 5 equal-width
+  // fixed columns in one row (see renderCommands) leaves less room per button than the
+  // old content-sized buttons had, and "REFRESH" is the longest label.
+  btn.setPadding(6, 6, 6, 6);
   btn.cornerRadius = 8;
   btn.backgroundColor = Color.dynamic(new Color("#eef1f6"), new Color("#242831"));
   if (config.widgetFamily !== "small") {
     btn.url = `scriptable:///run/${encodeURIComponent(Script.name())}?cmd=${cmdKey}&vin=${encodeURIComponent(vin)}`;
   }
   const t = btn.addText(def.label.toUpperCase());
-  t.font = Font.boldSystemFont(11);
+  t.font = Font.boldSystemFont(10);
+  t.lineLimit = 1;
+  t.minimumScaleFactor = 0.7; // shrink to fit rather than wrap/clip if still tight
 }
 
 function renderCommands(widget, vin) {
@@ -1355,14 +1381,16 @@ function renderCommands(widget, vin) {
 
   // All 5 buttons comfortably fit one row on a medium/large widget (confirmed via
   // screenshot review -- a 3+2 two-row split, from when this was written defensively
-  // for an unknown number of commands, left obvious unused room). Same flexible-spacer
-  // approach as the tile rows and verbose grids, so the row still spans the full width.
+  // for an unknown number of commands, left obvious unused room). Fixed-width buttons
+  // (not content-sized + flexible spacer) so they read as a tidy row of equal-size
+  // buttons instead of 5 differently-sized pills.
   const keys = Object.keys(WRITE_COMMANDS);
+  const w = columnWidth(keys.length);
   const row = widget.addStack();
   row.layoutHorizontally();
   keys.forEach((key, idx) => {
-    addCommandButton(row, key, vin);
-    if (idx < keys.length - 1) row.addSpacer();
+    addCommandButton(row, key, vin, w);
+    if (idx < keys.length - 1) row.addSpacer(COLUMN_GAP);
   });
 
   if (config.widgetFamily === "small") {
@@ -1740,7 +1768,8 @@ const TILE_DEFS = {
   imageTile: {
     label: () => "VEHICLE",
     basic: true,
-    renderTile: async (row, label, status, vin, regionCfg) => addImageTile(row, label, vin, regionCfg),
+    renderTile: async (row, label, status, vin, regionCfg, units, isEv, width) =>
+      addImageTile(row, label, vin, regionCfg, width),
   },
 };
 
@@ -2065,6 +2094,8 @@ async function buildWidget() {
     let pendingTiles = [];
     let needsSpacer = false;
 
+    const tileWidth = columnWidth(columns);
+
     const flushTiles = async () => {
       for (let i = 0; i < pendingTiles.length; i += columns) {
         if (needsSpacer) widget.addSpacer(10);
@@ -2075,11 +2106,11 @@ async function buildWidget() {
         for (let idx = 0; idx < rowKeys.length; idx++) {
           const def = TILE_DEFS[rowKeys[idx]];
           if (def.renderTile) {
-            await def.renderTile(row, def.label(isEv), status, vin, REGIONS[region], units, isEv);
+            await def.renderTile(row, def.label(isEv), status, vin, REGIONS[region], units, isEv, tileWidth);
           } else {
-            addTile(row, def.label(isEv), def.value(status, units, isEv));
+            addTile(row, def.label(isEv), def.value(status, units, isEv), tileWidth);
           }
-          if (idx < rowKeys.length - 1) row.addSpacer();
+          if (idx < rowKeys.length - 1) row.addSpacer(COLUMN_GAP);
         }
       }
       pendingTiles = [];
