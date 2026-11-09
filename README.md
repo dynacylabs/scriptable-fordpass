@@ -59,8 +59,7 @@ Running the script again later (instead of just viewing the widget) opens a menu
 write command — lock, unlock, remote start, cancel remote start, request a fresh report; see
 Write commands below for the distinction between this and "View status"), **Configure widget
 (basic)** / **Configure widget (advanced)** (see Configuring a widget below), **Manage vehicles**
-(see Multiple vehicles below), **Re-run setup** (to change your region or sign in again), or
-**Export token (debug)**.
+(see Multiple vehicles below), or **Re-run setup** (to change your region or sign in again).
 
 ## Multiple vehicles
 

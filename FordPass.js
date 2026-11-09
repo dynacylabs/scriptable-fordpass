@@ -774,7 +774,6 @@ async function runMenu() {
   menu.addAction("Configure widget (advanced)");
   menu.addAction("Manage vehicles");
   menu.addAction("Re-run setup / change region");
-  menu.addAction("Export token (debug)");
   menu.addCancelAction("Close");
   const choice = await menu.presentSheet();
 
@@ -792,23 +791,6 @@ async function runMenu() {
       await runVehicleManager();
     } else if (choice === 5) {
       await runSetup();
-    } else if (choice === 6) {
-      const token = loadToken();
-      const a = new Alert();
-      if (!token) {
-        a.title = "Not signed in";
-        a.message = "No stored FordPass token yet.";
-      } else {
-        Pasteboard.copyString(JSON.stringify({ vin, region, vehicles, token }, null, 2));
-        a.title = "Copied (debug)";
-        a.message =
-          "VIN + region + the full stored token are on your clipboard. This is a " +
-          "credential-equivalent value, same as a password for the account — only " +
-          "paste it somewhere you trust, and remove this debug menu item once you're " +
-          "done testing (see runMenu() in the script).";
-      }
-      a.addAction("OK");
-      await a.presentAlert();
     }
   } catch (err) {
     const a = new Alert();
