@@ -418,3 +418,10 @@ verbose block/image/location/commands combination), not just reasoned about:
 - `location` alone on a large widget is sparse (two lines of text, no map preview) — left as-is
   for now rather than adding a static map image, since that would mean depending on a map
   provider's snapshot API (and likely an API key) that doesn't exist on-device in Scriptable.
+
+A second review round (after the fixes above) confirmed those fixes live and surfaced one more
+case of the same underlying "fixed canvas, no scrolling" limitation: a medium widget packed with
+4 full rows of tiles (12 tiles) fits fine with the title hidden, but with the title shown it
+clips at both ends — the header text itself gets cut off at the top and the "Updated" timestamp
+disappears off the bottom. Same guidance as the kitchen-sink case: `notitle`, or fewer tiles,
+for a widget that's already packing 3+ full rows.
