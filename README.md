@@ -533,3 +533,21 @@ matching every other tile's label) using that pattern. `image`'s existing `wi.ce
 call was left alone despite being the same method -- it's a direct child of the `ListWidget`
 itself, not of a `WidgetStack`, and was already visually centered correctly in earlier rounds, so
 that specific docs caveat about stacks doesn't apply to it.
+
+An eighth round found the seventh round's spacer-wrap fix made `commands` *worse*, not better:
+button labels started truncating ("UN...", "ST...", "RE..."). Root cause: the nested
+`spacer-text-spacer` stack (`textRow`) had no explicit `.size` of its own, and a `WidgetStack`
+with no explicit size hugs its own content rather than stretching to fill its parent's fixed
+width -- so the two spacers had no actual leftover space to claim, and the wrapped text ended up
+with *less* real width than the same text had as an unwrapped direct child of `btn` before any of
+this, triggering `lineLimit`'s truncation where it hadn't before. Fix: give the nested stack an
+explicit width matching its parent's own budget (`btn`'s fixed width minus `btn`'s own padding,
+since that padding insets everything laid out inside it, `textRow` included) so the spacers have
+a real, known amount of space to work with -- restoring the same effective text width the
+original unwrapped version had, while now actually achieving centering too. Bumped
+`minimumScaleFactor` back down to a real safety net (0.7, same as the very first version) rather
+than the prior round's token 0.95, given how little margin ~40pt of actual text width leaves.
+Applied the identical explicit-size fix to `imageTile`'s equivalent `imageRow` wrapper
+proactively, even though it hadn't been reported broken, since it has the exact same unsized-
+nested-stack shape and so the same latent risk -- `col` has no padding, so its full width budget
+applies to `imageRow` directly, no subtraction needed there.

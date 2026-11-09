@@ -876,8 +876,14 @@ async function addImageTile(stack, label, vin, regionCfg, width) {
   // say outright that alignment methods "don't apply to text inside stacks" (the same
   // is true for images) and that the actual, documented way to center a stack child is
   // to wrap it in its own horizontal sub-stack with a flexible spacer on each side.
+  // That pattern alone turned out insufficient for the equivalent commands-button fix
+  // (see addCommandButton) -- an *unsized* nested stack hugs its own content instead of
+  // stretching to fill its parent's fixed width, leaving the spacers no real room to
+  // claim. Giving `imageRow` col's own explicit width (col has no padding, unlike
+  // commands' `btn`, so no inset to subtract here) avoids that same failure mode.
   const imageRow = col.addStack();
   imageRow.layoutHorizontally();
+  imageRow.size = new Size(width, 0);
   imageRow.addSpacer();
   const wi = imageRow.addImage(img);
   wi.imageSize = INLINE_IMAGE_SIZE_BY_FAMILY[config.widgetFamily] || INLINE_IMAGE_SIZE_BY_FAMILY.medium;
@@ -1383,20 +1389,32 @@ function addCommandButton(row, cmdKey, vin, width) {
   // and t.centerAlignText() alike. Root cause, confirmed against Scriptable's own
   // WidgetText docs: "Alignment doesn't apply to text inside stacks. For centered text
   // in a horizontal stack, add a spacer both before and after the text." -- that's the
-  // literal, documented fix, not a style preference.
+  // literal, documented fix. BUT a first attempt at it (spacer-text-spacer in an
+  // *unsized* nested stack) made things worse, truncating to "UN...", "ST...", "RE...".
+  // Root cause: a WidgetStack with no explicit `.size` hugs its own content rather than
+  // stretching to fill its parent's fixed width, so the two spacers had no real leftover
+  // space to claim -- the nested stack (and the text inside it) ended up narrower than
+  // the unwrapped text had before, not wider. Giving the nested stack the same explicit
+  // width budget as `btn` itself (minus btn's own horizontal padding, which insets
+  // everything laid out inside btn, textRow included) fixes that: now there's an actual
+  // known width for the spacers to divide.
+  const textRowWidth = width - 12; // btn's setPadding(6, 6, 6, 6) above eats 6pt each side
   const textRow = btn.addStack();
   textRow.layoutHorizontally();
+  textRow.size = new Size(textRowWidth, 0);
   textRow.addSpacer();
   const t = textRow.addText(def.label.toUpperCase());
-  // A shared, fixed-enough-to-never-need-shrinking font size, not minimumScaleFactor
-  // doing the work -- that had each button scale down only as much as *its own* label
-  // needed, so "LOCK" rendered at full size while "REFRESH" shrank noticeably smaller,
-  // a visibly inconsistent row rather than 5 uniform buttons (confirmed via screenshot
-  // review). 8pt is sized for "REFRESH", the longest label, to fit this cell's width
-  // without shrinking at all, so every button ends up the same size.
+  // A shared, fixed-enough-to-usually-not-need-shrinking font size, not
+  // minimumScaleFactor doing the sizing work on its own -- that had each button scale
+  // down only as much as *its own* label needed, so "LOCK" rendered at full size while
+  // "REFRESH" shrank noticeably smaller, a visibly inconsistent row rather than 5
+  // uniform buttons (confirmed via screenshot review). 8pt is sized for "REFRESH", the
+  // longest label, to fit this cell's width without shrinking at all, so every button
+  // ends up the same size; minimumScaleFactor is kept generous (not just a token 0.95)
+  // as a real safety net given how little margin ~40pt of actual text width leaves.
   t.font = Font.boldSystemFont(8);
   t.lineLimit = 1;
-  t.minimumScaleFactor = 0.95; // safety net only -- 8pt should already fit every label
+  t.minimumScaleFactor = 0.7;
   textRow.addSpacer();
 }
 
