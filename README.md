@@ -160,10 +160,11 @@ home screen above); then **Selected** — every item you've already added, *in t
 widget will show them*, each row with ↑/↓ buttons to move it earlier/later (Scriptable's picker
 UI has no drag-and-drop, so this is the practical equivalent — tap a row's label to remove it
 entirely, same single-tap gesture as before); then **Add more** — everything not yet added,
-alphabetical for easy browsing, tap a row to add it to the end of Selected. (The `newrow`
-manual-row-break token isn't offered in either list — it can repeat at arbitrary positions,
-which doesn't fit an add-once/reorder model, so it's Parameter-field-only, see below.) Then
-either:
+alphabetical for easy browsing, tap a row to add it to the end of Selected. Between the two is a
+standalone **+ Add a row break** button — unlike a normal item it isn't tied to one particular
+entry in Add more (it can repeat as many times as you like, at whatever positions you move it
+to), so it gets its own row-break entry in Selected (shown as `— new row —`) instead of living in
+either list. Then either:
 
 **Basic**'s "Add more" list shows only the commonly-useful items — the stuff most people want on
 a parked-vehicle dashboard. **Advanced**'s shows everything Basic does, plus driving-only
@@ -498,3 +499,23 @@ Parameter field was the only way to control item order. Checked Scriptable's own
 buttons per row instead (the practical equivalent given the platform), and the configurator's
 "which items" and "what order" are now the same single list (Selected) rather than order being
 implicitly whatever TILE_DEFS/BLOCK_DEFS happened to declare -- see Configuring a widget above.
+
+A sixth round fixed three things found in that round's screenshots:
+- `commands`' 5 buttons had visibly inconsistent text sizes -- `minimumScaleFactor` was doing
+  the actual sizing work, and it shrinks each button only as much as *that button's own* label
+  needs, so short labels ("LOCK") stayed full-size while long ones ("REFRESH") shrank
+  noticeably smaller. Replaced with one shared, fixed font size (8pt) picked to fit the longest
+  label without shrinking at all, so every button is now the same size; `minimumScaleFactor` is
+  still set as a safety net but shouldn't actually need to trigger.
+- `imageTile`'s photo was left-aligned inside its now-fixed-width cell from the earlier grid
+  rework, which looked off-center since the photo's own aspect ratio rarely fills the cell
+  exactly -- switched to centered.
+- `newrow` had quietly become impossible to set up via the configurator: the in-app header text
+  that used to explain it was Parameter-field-only got dropped when the configurator was
+  rewritten to be reorderable, leaving no way to discover or add one short of hand-typing the
+  Parameter field from memory. Added a "+ Add a row break" button (adds a `— new row —` entry
+  to Selected, moved into position with the same ↑/↓ buttons as everything else). This also
+  surfaced a related bug: `loadDefaultTiles()`'s filter only kept known TILE_DEFS/BLOCK_DEFS
+  keys, so a `newrow` saved via "Save as default" would've silently vanished the next time it
+  loaded (fine for "Copy as Parameter text", which doesn't round-trip through that filter) --
+  fixed to keep `newrow` through that filter too.

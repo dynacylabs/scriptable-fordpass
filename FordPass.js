@@ -291,7 +291,10 @@ function loadDefaultTiles() {
   const items = Keychain.get(KEYCHAIN_DEFAULT_TILES_KEY)
     .split(",")
     .map((s) => s.trim())
-    .filter((t) => TILE_DEFS[t] || BLOCK_DEFS[t]);
+    // "newrow" isn't a TILE_DEFS/BLOCK_DEFS key, but it's still a legitimate saved
+    // item (see parseWidgetParameter) -- without this it'd be silently stripped out
+    // of a saved default every time it's loaded back.
+    .filter((t) => t === "newrow" || TILE_DEFS[t] || BLOCK_DEFS[t]);
   return items.length ? items : null;
 }
 
@@ -869,7 +872,10 @@ async function addImageTile(stack, label, vin, regionCfg, width) {
   const wi = col.addImage(img);
   wi.imageSize = INLINE_IMAGE_SIZE_BY_FAMILY[config.widgetFamily] || INLINE_IMAGE_SIZE_BY_FAMILY.medium;
   wi.applyFittingContentMode();
-  wi.leftAlignImage();
+  // Was leftAlignImage() -- looked off-center within the now-fixed-width cell
+  // (confirmed via screenshot review) since the vehicle photo's own aspect ratio
+  // rarely fills the full cell width/height exactly.
+  wi.centerAlignImage();
 }
 
 // ===================== doors (verbose layout) =====================
@@ -1368,9 +1374,15 @@ function addCommandButton(row, cmdKey, vin, width) {
     btn.url = `scriptable:///run/${encodeURIComponent(Script.name())}?cmd=${cmdKey}&vin=${encodeURIComponent(vin)}`;
   }
   const t = btn.addText(def.label.toUpperCase());
-  t.font = Font.boldSystemFont(10);
+  // A shared, fixed-enough-to-never-need-shrinking font size, not minimumScaleFactor
+  // doing the work -- that had each button scale down only as much as *its own* label
+  // needed, so "LOCK" rendered at full size while "REFRESH" shrank noticeably smaller,
+  // a visibly inconsistent row rather than 5 uniform buttons (confirmed via screenshot
+  // review). 8pt is sized for "REFRESH", the longest label, to fit this cell's width
+  // without shrinking at all, so every button ends up the same size.
+  t.font = Font.boldSystemFont(8);
   t.lineLimit = 1;
-  t.minimumScaleFactor = 0.7; // shrink to fit rather than wrap/clip if still tight
+  t.minimumScaleFactor = 0.95; // safety net only -- 8pt should already fit every label
 }
 
 function renderCommands(widget, vin) {
@@ -2014,14 +2026,17 @@ async function runTileConfigurator(mode) {
     table.addRow(selectedHeader);
 
     selectedOrder.forEach((key, idx) => {
+      // "newrow" (see below) isn't a TILE_DEFS/BLOCK_DEFS key, so it has no `def` --
+      // handled as its own case rather than crashing on `def.label(false)`.
       const def = TILE_DEFS[key] || BLOCK_DEFS[key];
+      const label = key === "newrow" ? "— new row —" : def.label(false);
       const row = new UITableRow();
       row.dismissOnSelect = false;
       // Tapping the label removes it (same single-tap-to-toggle gesture as before);
       // the ↑/↓ cells are separate tap targets within the same row that reorder
       // instead, each a no-op at the list's own start/end rather than wrapping around
       // (wrapping "up" from the top to the bottom reads as a bug, not a feature, here).
-      const labelCell = row.addText(def.label(false));
+      const labelCell = row.addText(label);
       labelCell.widthWeight = 70;
       row.onSelect = () => {
         selectedOrder.splice(idx, 1);
@@ -2043,6 +2058,17 @@ async function runTileConfigurator(mode) {
       };
       table.addRow(row);
     });
+
+    // A manual row break between tiles -- not a TILE_DEFS/BLOCK_DEFS item, so it isn't
+    // part of the alphabetical "Add more" list below; it can be added as many times as
+    // wanted (unlike a normal item, which drops out of "Add more" once it's selected).
+    const addRowBreakRow = new UITableRow();
+    const addRowBreakBtn = addRowBreakRow.addButton("+ Add a row break");
+    addRowBreakBtn.onTap = () => {
+      selectedOrder.push("newrow");
+      render();
+    };
+    table.addRow(addRowBreakRow);
 
     const addHeader = new UITableRow();
     addHeader.isHeader = true;
