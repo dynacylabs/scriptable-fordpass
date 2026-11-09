@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FordPass Widget — Setup &amp; Configurator</title>
+<meta name="description" content="Install and configure the unofficial FordPass/Lincoln Way widget for Scriptable (iOS). No account, no server — everything runs on your phone." />
+<style>
+  :root {
+    --bg: #15171c;
+    --bg-elev: #1d2027;
+    --bg-elev-2: #262a33;
+    --border: #333844;
+    --text: #eef0f3;
+    --text-dim: #9aa1ad;
+    --accent: #5a9cf8;
+    --accent-dim: #3a6bb0;
+    --ok: #4caf7d;
+    --warn: #e0a94c;
+    --radius: 10px;
+    --maxw: 920px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--accent); }
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+    background: rgba(21, 23, 28, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; color: var(--text); }
+  .brand svg { width: 26px; height: 26px; flex: none; }
+  nav.top-nav { display: flex; gap: 18px; font-size: 14px; }
+  nav.top-nav a { text-decoration: none; color: var(--text-dim); }
+  nav.top-nav a:hover { color: var(--text); }
+  main { max-width: var(--maxw); margin: 0 auto; padding: 0 20px 80px; }
+  .hero { padding: 56px 0 36px; text-align: center; }
+  .hero h1 { font-size: clamp(28px, 5vw, 40px); margin: 0 0 12px; }
+  .hero p.lead { color: var(--text-dim); max-width: 640px; margin: 0 auto 22px; font-size: 17px; }
+  .badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 8px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 999px; font-size: 13px;
+    background: var(--bg-elev); border: 1px solid var(--border); color: var(--text-dim);
+    text-decoration: none;
+  }
+  .badge.sponsor { color: #ff8ab0; border-color: #5a2b3d; }
+  .badge:hover { border-color: var(--accent); color: var(--text); }
+  .cta-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 20px; border-radius: var(--radius); font-size: 15px; font-weight: 600;
+    text-decoration: none; cursor: pointer; border: 1px solid transparent;
+  }
+  .btn-primary { background: var(--accent); color: #0b1220; }
+  .btn-primary:hover { background: #76adfa; }
+  .btn-secondary { background: var(--bg-elev); color: var(--text); border-color: var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); }
+  section { margin: 64px 0; }
+  section h2 { font-size: 24px; margin: 0 0 6px; }
+  section > p.sub { color: var(--text-dim); margin: 0 0 28px; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+  .step {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 18px 20px;
+  }
+  .step .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%; background: var(--accent-dim); color: #fff;
+    font-size: 13px; font-weight: 700; margin-bottom: 10px;
+  }
+  .step h3 { margin: 0 0 8px; font-size: 16px; }
+  .step p { margin: 0 0 12px; color: var(--text-dim); font-size: 14px; }
+  .step .action a, .step .action button { font-size: 14px; }
+  .copy-status { display: block; margin-top: 8px; font-size: 13px; color: var(--ok); min-height: 16px; }
+  .panel {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 22px;
+  }
+  .note {
+    font-size: 13.5px; color: var(--text-dim); background: var(--bg-elev-2);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-top: 18px;
+  }
+  /* Configurator */
+  .cfg-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 18px; }
+  .seg { display: inline-flex; background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
+  .seg button {
+    border: none; background: transparent; color: var(--text-dim); padding: 6px 14px; border-radius: 999px;
+    font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+  .seg button.active { background: var(--accent); color: #0b1220; }
+  select {
+    background: var(--bg-elev-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; font-size: 13px;
+  }
+  label.inline { font-size: 13px; color: var(--text-dim); display: inline-flex; align-items: center; gap: 6px; }
+  .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 680px) { .cfg-grid { grid-template-columns: 1fr; } }
+  .col h4 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+  .group-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin: 14px 0 6px; }
+  .group-label:first-child { margin-top: 0; }
+  .item-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; }
+  .item-row {
+    display: flex; align-items: center; gap: 8px; background: var(--bg-elev-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 10px; font-size: 13.5px;
+  }
+  .item-row .lbl { flex: 1; }
+  .item-row.newrow .lbl { color: var(--text-dim); font-style: italic; }
+  .item-row button.icon-btn {
+    border: none; background: transparent; color: var(--text-dim); cursor: pointer; font-size: 14px;
+    width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px;
+  }
+  .item-row button.icon-btn:hover { background: var(--border); color: var(--text); }
+  .item-row button.add { color: var(--accent); }
+  .item-row button.remove { color: #e07070; }
+  .addrow-btn {
+    margin-top: 10px; width: 100%; padding: 8px; border-radius: 8px; border: 1px dashed var(--border);
+    background: transparent; color: var(--text-dim); font-size: 13px; cursor: pointer;
+  }
+  .addrow-btn:hover { border-color: var(--accent); color: var(--text); }
+  textarea#output {
+    width: 100%; margin-top: 18px; background: #0f1115; color: var(--ok); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; font: 13.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    resize: vertical; min-height: 56px;
+  }
+  .output-row { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  footer {
+    border-top: 1px solid var(--border); padding: 32px 20px; text-align: center;
+    color: var(--text-dim); font-size: 13px;
+  }
+  footer a { color: var(--text-dim); }
+  footer a:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="#top">
+    <svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M499.99 176h-59.87l-16.64-41.6C406.38 91.63 365.57 64 319.5 64h-127c-46.06 0-86.88 27.63-103.99 70.4L71.87 176H12.01C4.2 176-1.53 183.34.37 190.91l6 24C7.7 220.25 12.5 224 18.01 224h20.07C24.65 235.73 16 252.78 16 272v48c0 16.12 6.16 30.67 16 41.93V416c0 17.67 14.33 32 32 32h32c17.67 0 32-14.33 32-32v-32h256v32c0 17.67 14.33 32 32 32h32c17.67 0 32-14.33 32-32v-54.07c9.84-11.25 16-25.8 16-41.93v-48c0-19.22-8.65-36.27-22.07-48H494c5.51 0 10.31-3.75 11.64-9.09l6-24c1.89-7.57-3.84-14.91-11.65-14.91zM147.93 158.17c7.29-18.22 24.94-30.17 44.57-30.17h127c19.63 0 37.28 11.95 44.57 30.17L384 208H128l19.93-49.83zM96 319.8c-19.2 0-32-12.76-32-31.9S76.8 256 96 256s48 28.71 48 47.85-28.8 15.95-48 15.95zm320 0c-19.2 0-48 3.19-48-15.95S396.8 256 416 256s32 12.76 32 31.9-12.8 31.9-32 31.9z"/></svg>
+    FordPass Widget
+  </a>
+  <nav class="top-nav">
+    <a href="#install">Setup</a>
+    <a href="#configure">Configure</a>
+    <a href="https://github.com/dynacylabs/scriptable-fordpass" target="_blank" rel="noopener">GitHub ↗</a>
+    <a href="https://github.com/sponsors/dynacylabs" target="_blank" rel="noopener" style="color:#ff8ab0">Sponsor ♥</a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <h1>Set up the FordPass widget in a couple minutes</h1>
+    <p class="lead">
+      An unofficial Ford/Lincoln vehicle widget for <a href="https://scriptable.app" target="_blank" rel="noopener">Scriptable</a> (iOS).
+      One file, no account of ours, no server — it talks straight to Ford's own app API from your phone.
+    </p>
+    <div class="badges">
+      <a class="badge" href="https://github.com/dynacylabs/scriptable-fordpass/blob/main/LICENSE" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>
+      <a class="badge" href="https://github.com/dynacylabs/scriptable-fordpass" target="_blank" rel="noopener">Source on GitHub</a>
+      <a class="badge sponsor" href="https://github.com/sponsors/dynacylabs" target="_blank" rel="noopener">♥ Sponsor this project</a>
+    </div>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#install">Get started</a>
+      <a class="btn btn-secondary" href="#configure">Build widget config</a>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <p class="sub">Four steps, all on your iPhone/iPad. See the <a href="https://github.com/dynacylabs/scriptable-fordpass#readme" target="_blank" rel="noopener">README</a> for the full write-up.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <h3>Install Scriptable</h3>
+        <p>Free app from the App Store. This widget needs nothing else installed.</p>
+        <div class="action"><a class="btn btn-secondary" href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank" rel="noopener">Download Scriptable ↗</a></div>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <h3>Copy the script</h3>
+        <p>Grabs the latest <code>FordPass.js</code> straight from GitHub onto your clipboard. Nothing else is sent anywhere.</p>
+        <div class="action">
+          <button class="btn btn-secondary" id="copyScriptBtn">Copy FordPass.js</button>
+          <span class="copy-status" id="copyScriptStatus"></span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <h3>Paste &amp; run</h3>
+        <p>Opens Scriptable to a new, blank script. Paste (⌘V / long-press → Paste), then tap ▶ to run it once.</p>
+        <div class="action"><a class="btn btn-secondary" href="scriptable:///add">Open Scriptable ↗</a></div>
+      </div>
+      <div class="step">
+        <div class="n">4</div>
+        <h3>Sign in &amp; add widget</h3>
+        <p>Pick your region, sign in with your real Ford/Lincoln account when the window opens, choose your vehicle(s), then add a Scriptable widget to your home screen pointing at this script.</p>
+      </div>
+    </div>
+    <div class="note">
+      This is unofficial and unsupported by Ford — it can break without notice, and some owners report extra scrutiny on accounts
+      using third-party API access. Consider a secondary FordPass login rather than your primary one. Full details in the
+      <a href="https://github.com/dynacylabs/scriptable-fordpass#readme" target="_blank" rel="noopener">README</a>.
+    </div>
+  </section>
+
+  <section id="configure">
+    <h2>Build your widget config</h2>
+    <p class="sub">
+      Pick what shows on your widget, in what order, then paste the result into the widget's <b>Parameter</b> field
+      (long-press the widget → Edit Widget → Parameter). You can also do all of this from the script's own in-app
+      configurator (run the script → Configure widget) — this is the same tool, just easier to browse on a bigger screen.
+    </p>
+    <div class="panel">
+      <div class="cfg-toolbar">
+        <div class="seg" id="modeSeg">
+          <button data-mode="basic" class="active">Basic</button>
+          <button data-mode="advanced">Advanced</button>
+        </div>
+        <label class="inline">Units
+          <select id="unitsSel"><option value="">saved default</option><option value="imperial">imperial</option><option value="metric">metric</option></select>
+        </label>
+        <label class="inline">Columns
+          <select id="colsSel"><option value="">saved default</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+        </label>
+        <label class="inline">Maps
+          <select id="mapsSel"><option value="">saved default</option><option value="applemaps">Apple Maps</option><option value="googlemaps">Google Maps</option></select>
+        </label>
+        <label class="inline"><input type="checkbox" id="notitleChk" /> Hide header</label>
+      </div>
+
+      <div class="cfg-grid">
+        <div class="col">
+          <h4>Add</h4>
+          <div id="availableList"></div>
+        </div>
+        <div class="col">
+          <h4>Selected <span id="selectedCount" style="color:var(--text-dim);font-weight:400;"></span></h4>
+          <ul class="item-list" id="selectedList"></ul>
+          <button class="addrow-btn" id="addRowBreakBtn">+ Add a row break</button>
+        </div>
+      </div>
+
+      <textarea id="output" readonly rows="2"></textarea>
+      <div class="output-row">
+        <button class="btn btn-primary" id="copyParamBtn">Copy parameter text</button>
+        <button class="btn btn-secondary" id="resetBtn">Reset to defaults</button>
+        <span class="copy-status" id="copyParamStatus"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="roadmap">
+    <h2>Roadmap</h2>
+    <p class="sub">What's planned next. Not promises, just the direction — open an issue if you want to help with one.</p>
+    <div class="steps">
+      <div class="step">
+        <h3>Lock Screen widgets</h3>
+        <p>Support for the small circular/rectangular/inline Lock Screen widget families, not just Home Screen widgets.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="support">
+    <h2>Support this project</h2>
+    <p class="sub">
+      This widget is free, source-available, and will stay that way. If it's useful to you, a sponsorship helps justify the
+      time spent keeping it working as Ford changes their API out from under it.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/sponsors/dynacylabs" target="_blank" rel="noopener">♥ Sponsor on GitHub</a>
+      <a class="btn btn-secondary" href="https://github.com/dynacylabs/scriptable-fordpass" target="_blank" rel="noopener">Star the repo ↗</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>
+    Unofficial. Not affiliated with, endorsed by, or supported by Ford Motor Company or Lincoln.
+    Licensed under <a href="https://github.com/dynacylabs/scriptable-fordpass/blob/main/LICENSE" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>
+    — noncommercial use, attribution required, forks share-alike.
+  </p>
+  <p><a href="https://github.com/dynacylabs/scriptable-fordpass" target="_blank" rel="noopener">github.com/dynacylabs/scriptable-fordpass</a></p>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var RAW_URL = "https://raw.githubusercontent.com/dynacylabs/scriptable-fordpass/main/FordPass.js";
+
+  // Ground truth mirrors FordPass.js TILE_DEFS / BLOCK_DEFS. Keep in sync if those change.
+  var TILES = [
+    { key: "doors", label: "Doors", basic: true },
+    { key: "fuel", label: "Fuel / Charge", basic: true },
+    { key: "range", label: "Range", basic: true },
+    { key: "odometer", label: "Odometer", basic: true },
+    { key: "outside", label: "Outside temp", basic: true },
+    { key: "oil", label: "Oil life", basic: true },
+    { key: "battery12v", label: "12V battery", basic: true },
+    { key: "tires", label: "Tires", basic: true },
+    { key: "windows", label: "Windows", basic: true },
+    { key: "alarm", label: "Alarm", basic: true },
+    { key: "panicAlarm", label: "Panic alarm", basic: true },
+    { key: "ignition", label: "Ignition", basic: true },
+    { key: "health", label: "Health", basic: true },
+    { key: "hood", label: "Hood", basic: true },
+    { key: "parkingBrake", label: "Parking brake", basic: true },
+    { key: "remoteStartTimer", label: "Remote start timer", basic: true },
+    { key: "seatBelt", label: "Seat belts", basic: true },
+    { key: "imageTile", label: "Vehicle photo (tile)", basic: true },
+    { key: "ambientTemp", label: "Ambient temp (unconfirmed)", basic: false },
+    { key: "xevPlugCharger", label: "Plug status (unconfirmed)", basic: false },
+    { key: "speed", label: "Speed", basic: false },
+    { key: "accelPedal", label: "Accel pedal %", basic: false },
+    { key: "brakePedal", label: "Brake pedal", basic: false },
+    { key: "brakeTorque", label: "Brake torque", basic: false },
+    { key: "engineSpeed", label: "Engine RPM", basic: false },
+    { key: "engineCoolantTemp", label: "Coolant temp", basic: false },
+    { key: "gear", label: "Gear", basic: false },
+    { key: "transTorque", label: "Trans torque", basic: false },
+    { key: "wheelTorque", label: "Wheel torque", basic: false },
+    { key: "yawRate", label: "Yaw rate", basic: false },
+    { key: "tripEconomy", label: "Trip economy", basic: false },
+    { key: "tripEvDistance", label: "EV trip distance", basic: false },
+    { key: "acceleration", label: "Acceleration (raw)", basic: false }
+  ];
+  var BLOCKS = [
+    { key: "image", label: "Vehicle image (full width)", basic: true },
+    { key: "doorsVerbose", label: "Doors (per-door table)", basic: true },
+    { key: "tiresVerbose", label: "Tires (per-wheel grid)", basic: true },
+    { key: "windowsVerbose", label: "Windows (per-window grid)", basic: true },
+    { key: "healthVerbose", label: "Health (full alert list)", basic: true },
+    { key: "seatBeltVerbose", label: "Seat belts (per-occupant)", basic: true },
+    { key: "location", label: "Location (map link)", basic: true },
+    { key: "commands", label: "Commands (lock/unlock/start/stop/refresh)", basic: true },
+    { key: "accelerationVerbose", label: "Accelerometer (X/Y/Z)", basic: false },
+    { key: "customMetricsVerbose", label: "Custom metrics (raw)", basic: false }
+  ];
+  var ALL = {};
+  TILES.concat(BLOCKS).forEach(function (t) { ALL[t.key] = t; });
+
+  var DEFAULTS = ["doors", "fuel", "range", "odometer", "outside", "oil", "battery12v"];
+
+  var state = {
+    mode: "basic",
+    selected: DEFAULTS.slice()
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---- Copy script to clipboard ----
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand("copy");
+        resolve();
+      } catch (e) {
+        reject(e);
+      } finally {
+        document.body.removeChild(ta);
+      }
+    });
+  }
+
+  $("copyScriptBtn").addEventListener("click", function () {
+    var status = $("copyScriptStatus");
+    status.textContent = "Fetching…";
+    status.style.color = "var(--text-dim)";
+    fetch(RAW_URL, { cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.text();
+      })
+      .then(function (code) { return copyText(code); })
+      .then(function () {
+        status.textContent = "Copied to clipboard ✓";
+        status.style.color = "var(--ok)";
+      })
+      .catch(function () {
+        status.textContent = "Couldn't copy automatically — opening the raw file instead.";
+        status.style.color = "var(--warn)";
+        window.open(RAW_URL, "_blank", "noopener");
+      });
+  });
+
+  // ---- Configurator ----
+  function renderAvailable() {
+    var container = $("availableList");
+    container.innerHTML = "";
+    var selectedSet = {};
+    state.selected.forEach(function (k) { selectedSet[k] = true; });
+
+    function group(title, items) {
+      var visible = items.filter(function (t) {
+        return (state.mode === "advanced" || t.basic) && !selectedSet[t.key];
+      });
+      if (!visible.length) return;
+      var h = document.createElement("div");
+      h.className = "group-label";
+      h.textContent = title;
+      container.appendChild(h);
+      var list = document.createElement("ul");
+      list.className = "item-list";
+      visible.forEach(function (t) {
+        var li = document.createElement("li");
+        li.className = "item-row";
+        li.innerHTML = '<span class="lbl">' + t.label + '</span>' +
+          '<button class="icon-btn add" title="Add" data-key="' + t.key + '">+</button>';
+        list.appendChild(li);
+      });
+      container.appendChild(list);
+    }
+
+    group("Tiles", TILES);
+    group("Full-width blocks", BLOCKS);
+
+    container.querySelectorAll("button.add").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.selected.push(btn.getAttribute("data-key"));
+        renderAll();
+      });
+    });
+  }
+
+  function renderSelected() {
+    var ul = $("selectedList");
+    ul.innerHTML = "";
+    $("selectedCount").textContent = "(" + state.selected.filter(function (k) { return k !== "__newrow__"; }).length + ")";
+    state.selected.forEach(function (key, i) {
+      var li = document.createElement("li");
+      var isBreak = key === "__newrow__";
+      li.className = "item-row" + (isBreak ? " newrow" : "");
+      var label = isBreak ? "— new row —" : (ALL[key] ? ALL[key].label : key);
+      li.innerHTML =
+        '<span class="lbl">' + label + "</span>" +
+        '<button class="icon-btn" data-act="up" data-i="' + i + '" title="Move up">↑</button>' +
+        '<button class="icon-btn" data-act="down" data-i="' + i + '" title="Move down">↓</button>' +
+        '<button class="icon-btn remove" data-act="rm" data-i="' + i + '" title="Remove">✕</button>';
+      ul.appendChild(li);
+    });
+    ul.querySelectorAll("button").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var i = parseInt(btn.getAttribute("data-i"), 10);
+        var act = btn.getAttribute("data-act");
+        if (act === "up" && i > 0) {
+          var a = state.selected.splice(i, 1)[0];
+          state.selected.splice(i - 1, 0, a);
+        } else if (act === "down" && i < state.selected.length - 1) {
+          var b = state.selected.splice(i, 1)[0];
+          state.selected.splice(i + 1, 0, b);
+        } else if (act === "rm") {
+          state.selected.splice(i, 1);
+        }
+        renderAll();
+      });
+    });
+  }
+
+  function buildParamString() {
+    var tokens = state.selected.slice();
+    var units = $("unitsSel").value;
+    var cols = $("colsSel").value;
+    var maps = $("mapsSel").value;
+    var notitle = $("notitleChk").checked;
+    if (units) tokens.push(units);
+    if (cols) tokens.push("cols" + cols);
+    if (maps) tokens.push(maps);
+    if (notitle) tokens.push("notitle");
+    return tokens.map(function (t) { return t === "__newrow__" ? "newrow" : t; }).join(",");
+  }
+
+  function renderOutput() {
+    $("output").value = buildParamString();
+  }
+
+  function renderAll() {
+    renderAvailable();
+    renderSelected();
+    renderOutput();
+  }
+
+  $("modeSeg").addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-mode]");
+    if (!btn) return;
+    state.mode = btn.getAttribute("data-mode");
+    $("modeSeg").querySelectorAll("button").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    renderAll();
+  });
+
+  ["unitsSel", "colsSel", "mapsSel"].forEach(function (id) {
+    $(id).addEventListener("change", renderOutput);
+  });
+  $("notitleChk").addEventListener("change", renderOutput);
+
+  $("addRowBreakBtn").addEventListener("click", function () {
+    state.selected.push("__newrow__");
+    renderAll();
+  });
+
+  $("resetBtn").addEventListener("click", function () {
+    state.selected = DEFAULTS.slice();
+    $("unitsSel").value = "";
+    $("colsSel").value = "";
+    $("mapsSel").value = "";
+    $("notitleChk").checked = false;
+    renderAll();
+  });
+
+  $("copyParamBtn").addEventListener("click", function () {
+    var status = $("copyParamStatus");
+    copyText($("output").value)
+      .then(function () {
+        status.textContent = "Copied ✓ — paste into the widget's Parameter field";
+        status.style.color = "var(--ok)";
+      })
+      .catch(function () {
+        status.textContent = "Couldn't copy automatically — select the text above and copy manually.";
+        status.style.color = "var(--warn)";
+      });
+  });
+
+  renderAll();
+})();
+</script>
+
+</body>
+</html>
