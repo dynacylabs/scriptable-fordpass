@@ -288,3 +288,29 @@ Applied the identical explicit-size fix to `imageTile`'s equivalent `imageRow` w
 proactively, even though it hadn't been reported broken, since it has the exact same unsized-
 nested-stack shape and so the same latent risk -- `col` has no padding, so its full width budget
 applies to `imageRow` directly, no subtraction needed there.
+
+A ninth round (not previously written up here) found `commands` still truncated "UNLOCK"/
+"REFRESH" even after the eighth round's sizing fix -- the real text budget genuinely wasn't
+enough at 8pt, not just a width-computation mismatch. Rather than guess a third exact point
+size (character-width-per-point estimates for this font had now been wrong twice), that round
+leaned on the actual guarantee instead of the arithmetic above it: tightened `commands`' own gap
+and button padding for a bit more real width, dropped the font to 7pt, and lowered
+`minimumScaleFactor` to 0.5 (a genuine 3.5pt floor) -- `lineLimit(1)` + `minimumScaleFactor` is
+the standard "shrink, never truncate" combination, so a low enough floor prevents truncation
+regardless of whether the budget math above it is exactly right.
+
+A tenth round found the same underlying problem (text wrapping inside a fixed-width column) was
+never actually fixed for anything *except* `commands` -- a fresh 21-screenshot pass turned up
+label wrapping at `cols4` ("REMOTE START" -> "REMOTE"/"START", "PANIC ALARM", "BRAKE TORQUE",
+etc. -- confirmed on both a medium and a large widget) and, more importantly, *value* wrapping on
+the most basic possible case: the default `doors` tile's "UNLOCKED" value wrapped to "UNLOC"/
+"KED" on a small widget at the user's saved 2-column setting. Every other tile/cell (`addTile`/
+`addTileLabel`, and the doors/tires/windows/seatBelt verbose cells) had no `lineLimit` or
+`minimumScaleFactor` at all before this -- they just wrapped by default the moment text didn't
+fit, which also throws off row-height alignment against neighboring cells that didn't wrap.
+Applied the same `lineLimit(1)` + `minimumScaleFactor` shrink-to-fit pattern from the
+ninth-round `commands` fix universally, via a shared `fitTextToWidth()` helper, to every tile
+label/value and every verbose-grid cell's label/value/sub-label. Floors are deliberately
+generous (0.7 for labels, 0.5-0.6 for values) given how unreliable this font's character-width
+estimates have proven to be all session -- the floor itself, not precise arithmetic above it, is
+what's meant to guarantee no more wrapping regardless of column count or label length.

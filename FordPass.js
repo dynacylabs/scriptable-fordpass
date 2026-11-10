@@ -859,10 +859,22 @@ function columnWidth(numColumns) {
   return (total - COLUMN_GAP * (numColumns - 1)) / numColumns;
 }
 
+// lineLimit(1) + minimumScaleFactor is the standard "shrink, never wrap" combination
+// (same fix applied to the `commands` buttons earlier) -- without it, a long label
+// ("REMOTE START") or even a long *value* ("UNLOCKED", confirmed wrapping to "UNLOC"/
+// "KED" on a small widget's default doors tile) wraps to 2 lines inside a fixed-width
+// column, which also throws off row-height alignment with neighboring tiles that
+// didn't wrap. Every tile/cell label and value below goes through this.
+function fitTextToWidth(t, minimumScaleFactor) {
+  t.lineLimit = 1;
+  t.minimumScaleFactor = minimumScaleFactor;
+}
+
 function addTileLabel(col, label) {
   const l = col.addText(label);
   l.font = Font.systemFont(10);
   l.textColor = Color.gray();
+  fitTextToWidth(l, 0.7);
 }
 
 function addTile(stack, label, value, width) {
@@ -872,6 +884,7 @@ function addTile(stack, label, value, width) {
   addTileLabel(col, label);
   const v = col.addText(value == null ? "—" : String(value));
   v.font = Font.boldSystemFont(15);
+  fitTextToWidth(v, 0.5);
 }
 
 // `imageTile`'s inline alternative to the full-width `image` block -- a tile-sized
@@ -959,12 +972,15 @@ function addDoorCell(stack, label, openVal, lockVal, width) {
   const l = col.addText(label);
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
+  fitTextToWidth(l, 0.7);
   const o = col.addText(openVal || "—");
   o.font = Font.boldSystemFont(12);
+  fitTextToWidth(o, 0.6);
   if (lockVal) {
     const k = col.addText(lockVal);
     k.font = Font.systemFont(9);
     k.textColor = Color.gray();
+    fitTextToWidth(k, 0.7);
   }
 }
 
@@ -1051,13 +1067,16 @@ function addTireCell(stack, tire, width) {
   const l = col.addText(tire.label);
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
+  fitTextToWidth(l, 0.7);
   const p = col.addText(tire.pressure || "—");
   p.font = Font.boldSystemFont(12);
   if (!tire.normal) p.textColor = Color.orange();
+  fitTextToWidth(p, 0.6);
   if (tire.status && !tire.normal) {
     const s = col.addText(humanizeStatus(tire.status));
     s.font = Font.systemFont(9);
     s.textColor = Color.orange();
+    fitTextToWidth(s, 0.7);
   }
 }
 
@@ -1140,9 +1159,11 @@ function addWindowCell(stack, label, value, width) {
   const l = col.addText(label);
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
+  fitTextToWidth(l, 0.7);
   const v = col.addText(value || "—");
   v.font = Font.boldSystemFont(12);
   if (value === "OPEN") v.textColor = Color.orange();
+  fitTextToWidth(v, 0.6);
 }
 
 function renderWindowsVerbose(widget, status, region) {
@@ -1193,9 +1214,11 @@ function addSeatBeltCell(stack, belt, width) {
   const l = col.addText(humanizeStatus(belt.vehicleOccupantRole || "UNKNOWN"));
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
+  fitTextToWidth(l, 0.7);
   const v = col.addText(humanizeStatus(belt.value || ""));
   v.font = Font.boldSystemFont(12);
   if (belt.value === "UNBUCKLED") v.textColor = Color.orange();
+  fitTextToWidth(v, 0.6);
 }
 
 function renderSeatBeltVerbose(widget, status) {
