@@ -865,6 +865,20 @@ function columnWidth(numColumns) {
 // "KED" on a small widget's default doors tile) wraps to 2 lines inside a fixed-width
 // column, which also throws off row-height alignment with neighboring tiles that
 // didn't wrap. Every tile/cell label and value below goes through this.
+//
+// First attempt used floors of 0.6-0.7, modeled on the `commands` fix -- confirmed via
+// a follow-up screenshot round that it only worked for *some* words (fit fine) and not
+// others of the same length at the same column width ("REMOTE START"/"PANIC ALARM" fit,
+// "BRAKE TORQUE"/"TRIP ECONOMY" at the identical cols2 width did not) -- this font's
+// actual character widths vary more by which letters are in the word (wide round
+// glyphs like O/Q/C/M vs narrow ones like I/T/L/R) than a flat per-character estimate
+// predicts, so a floor that rescues one word can still be too high for another of the
+// same length. Worse, once minimumScaleFactor's floor is exhausted, a plain WidgetText
+// (unlike the commands buttons' text, which truncates) falls back to *wrapping* again,
+// not truncating -- so an insufficient floor here doesn't degrade gracefully, it fails
+// exactly the same way as having no floor at all. Floors below are deliberately much
+// lower (0.35-0.4) than the arithmetic above says should be needed, specifically to
+// survive being wrong about character widths again.
 function fitTextToWidth(t, minimumScaleFactor) {
   t.lineLimit = 1;
   t.minimumScaleFactor = minimumScaleFactor;
@@ -874,7 +888,7 @@ function addTileLabel(col, label) {
   const l = col.addText(label);
   l.font = Font.systemFont(10);
   l.textColor = Color.gray();
-  fitTextToWidth(l, 0.7);
+  fitTextToWidth(l, 0.4);
 }
 
 function addTile(stack, label, value, width) {
@@ -884,7 +898,7 @@ function addTile(stack, label, value, width) {
   addTileLabel(col, label);
   const v = col.addText(value == null ? "—" : String(value));
   v.font = Font.boldSystemFont(15);
-  fitTextToWidth(v, 0.5);
+  fitTextToWidth(v, 0.35);
 }
 
 // `imageTile`'s inline alternative to the full-width `image` block -- a tile-sized
@@ -972,15 +986,15 @@ function addDoorCell(stack, label, openVal, lockVal, width) {
   const l = col.addText(label);
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
-  fitTextToWidth(l, 0.7);
+  fitTextToWidth(l, 0.4);
   const o = col.addText(openVal || "—");
   o.font = Font.boldSystemFont(12);
-  fitTextToWidth(o, 0.6);
+  fitTextToWidth(o, 0.35);
   if (lockVal) {
     const k = col.addText(lockVal);
     k.font = Font.systemFont(9);
     k.textColor = Color.gray();
-    fitTextToWidth(k, 0.7);
+    fitTextToWidth(k, 0.4);
   }
 }
 
@@ -1067,16 +1081,16 @@ function addTireCell(stack, tire, width) {
   const l = col.addText(tire.label);
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
-  fitTextToWidth(l, 0.7);
+  fitTextToWidth(l, 0.4);
   const p = col.addText(tire.pressure || "—");
   p.font = Font.boldSystemFont(12);
   if (!tire.normal) p.textColor = Color.orange();
-  fitTextToWidth(p, 0.6);
+  fitTextToWidth(p, 0.35);
   if (tire.status && !tire.normal) {
     const s = col.addText(humanizeStatus(tire.status));
     s.font = Font.systemFont(9);
     s.textColor = Color.orange();
-    fitTextToWidth(s, 0.7);
+    fitTextToWidth(s, 0.4);
   }
 }
 
@@ -1159,11 +1173,11 @@ function addWindowCell(stack, label, value, width) {
   const l = col.addText(label);
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
-  fitTextToWidth(l, 0.7);
+  fitTextToWidth(l, 0.4);
   const v = col.addText(value || "—");
   v.font = Font.boldSystemFont(12);
   if (value === "OPEN") v.textColor = Color.orange();
-  fitTextToWidth(v, 0.6);
+  fitTextToWidth(v, 0.35);
 }
 
 function renderWindowsVerbose(widget, status, region) {
@@ -1214,11 +1228,11 @@ function addSeatBeltCell(stack, belt, width) {
   const l = col.addText(humanizeStatus(belt.vehicleOccupantRole || "UNKNOWN"));
   l.font = Font.systemFont(9);
   l.textColor = Color.gray();
-  fitTextToWidth(l, 0.7);
+  fitTextToWidth(l, 0.4);
   const v = col.addText(humanizeStatus(belt.value || ""));
   v.font = Font.boldSystemFont(12);
   if (belt.value === "UNBUCKLED") v.textColor = Color.orange();
-  fitTextToWidth(v, 0.6);
+  fitTextToWidth(v, 0.35);
 }
 
 function renderSeatBeltVerbose(widget, status) {

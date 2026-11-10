@@ -314,3 +314,18 @@ label/value and every verbose-grid cell's label/value/sub-label. Floors are deli
 generous (0.7 for labels, 0.5-0.6 for values) given how unreliable this font's character-width
 estimates have proven to be all session -- the floor itself, not precise arithmetic above it, is
 what's meant to guarantee no more wrapping regardless of column count or label length.
+
+An eleventh round found the tenth round's floors (0.7/0.5-0.6) still weren't low enough -- a
+follow-up screenshot pass showed "REMOTE START"/"PANIC ALARM" now fit fine at `cols2`, but
+"BRAKE TORQUE"/"TRIP ECONOMY" at the *identical* column width still wrapped, and every `cols4`
+case (medium and large alike) still wrapped across the board. The real lesson: this font's
+character widths vary enough by which letters are in a word (wide round glyphs -- O, Q, C, M --
+vs narrow ones -- I, T, L, R) that a floor rescuing one word of a given length can still be too
+high for another word of the same length. Worse, once `minimumScaleFactor`'s floor is exhausted,
+a plain `WidgetText` (unlike the `commands` buttons' text, which truncates) falls back to
+*wrapping* again rather than truncating -- so an insufficient floor fails exactly the same way
+as having no floor at all, with no visible partial credit for trying. Rather than tune the
+numbers a third time, dropped the floors much further than the arithmetic says should be
+necessary (0.4 for labels, 0.35 for values) specifically to survive being wrong about character
+widths yet again -- worst case this renders some words quite small, which is still strictly
+better than wrapping (and the misaligned row heights that come with it).
