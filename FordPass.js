@@ -83,6 +83,43 @@ const KEYCHAIN_GO_HOME_ENABLED_KEY = "fordconnect_go_home_enabled";
 const KEYCHAIN_TILE_COLUMNS_KEY = "fordconnect_tile_columns";
 const EXPIRY_SKEW_MS = 60 * 1000;
 
+// iOS Keychain items survive deleting and reinstalling this app (and Scriptable itself),
+// by design -- unlike this script's own local sandbox, which is wiped along with the app.
+// So a device that's been reset, resold, or handed to someone else could still have a
+// previous owner's sign-in token and vehicle sitting in Keychain, which would otherwise be
+// picked up silently and hand the new owner lock/unlock/remote-start control over a
+// vehicle that isn't theirs, without ever signing in themselves. This marker file lives
+// only in the local sandbox, so its absence reliably means "this specific install has
+// never run setup", regardless of what Keychain still has from before.
+const SETUP_MARKER_FILENAME = "fordpass_setup_marker.json";
+const ACCOUNT_KEYCHAIN_KEYS = [KEYCHAIN_TOKEN_KEY, KEYCHAIN_VIN_KEY, KEYCHAIN_VEHICLES_KEY, KEYCHAIN_ACTIVE_VIN_KEY];
+
+function hasSetupMarker() {
+  const fm = FileManager.local();
+  return fm.fileExists(fm.joinPath(fm.documentsDirectory(), SETUP_MARKER_FILENAME));
+}
+
+function writeSetupMarker() {
+  const fm = FileManager.local();
+  fm.writeString(fm.joinPath(fm.documentsDirectory(), SETUP_MARKER_FILENAME), String(Date.now()));
+}
+
+// Call once per entry point, before anything reads account/vehicle Keychain state. Wipes
+// any leftover sign-in token and vehicle list the first time this install ever runs, and
+// returns whether it found (and cleared) any -- callers that can show UI should tell the
+// user why they're being asked to sign in again.
+function ensureNotStaleInstall() {
+  if (hasSetupMarker()) return false;
+  const hadLeftoverAccountData = ACCOUNT_KEYCHAIN_KEYS.some((k) => Keychain.contains(k));
+  if (hadLeftoverAccountData) {
+    for (const k of ACCOUNT_KEYCHAIN_KEYS) {
+      if (Keychain.contains(k)) Keychain.remove(k);
+    }
+  }
+  writeSetupMarker();
+  return hadLeftoverAccountData;
+}
+
 // ===================== small helpers (no Web APIs in Scriptable's JS runtime) =====================
 
 function formEncode(obj) {
@@ -2252,14 +2289,28 @@ async function buildWidget() {
 
 // ===================== entry point =====================
 
+const hadStaleAccountData = ensureNotStaleInstall();
+
 if (config.runsInWidget) {
   const widget = await buildWidget();
   Script.setWidget(widget);
   Script.complete();
 } else if (args.queryParameters && args.queryParameters.cmd) {
   await runCommandFromWidget(args.queryParameters.cmd, args.queryParameters.vin);
-} else if (!loadVin() || !loadToken()) {
-  await runSetup();
 } else {
-  await runMenu();
+  if (hadStaleAccountData) {
+    const a = new Alert();
+    a.title = "Leftover vehicle data cleared";
+    a.message =
+      "This install found a Ford account and vehicle left over from a previous install on " +
+      "this device (iOS keeps Keychain data even after an app is deleted). It's been cleared " +
+      "for your security — sign in again to continue.";
+    a.addAction("OK");
+    await a.presentAlert();
+  }
+  if (!loadVin() || !loadToken()) {
+    await runSetup();
+  } else {
+    await runMenu();
+  }
 }

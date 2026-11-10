@@ -32,6 +32,12 @@ anywhere except straight to Ford's and Autonomic's own endpoints. There's also n
 to protect here — the IDs this script hardcodes are public identifiers baked into Ford's own
 FordPass app binary, not something you register.
 
+iOS Keychain data survives deleting and reinstalling an app, by design — so a device that's been
+reset, resold, or handed to someone else could still have a previous owner's sign-in token and
+vehicle sitting in Keychain. The script detects this (the first time it runs after a fresh install
+of the script itself) and clears any leftover account data before doing anything else, rather than
+silently handing a new phone owner control over a vehicle that isn't theirs.
+
 ## Setup
 
 The [setup page](https://dynacylabs.github.io/scriptable-fordpass/) has copy/paste buttons and
@@ -39,7 +45,8 @@ screenshots. The short version:
 
 1. Install [Scriptable](https://apps.apple.com/app/scriptable/id1405459188) from the App Store.
 2. Add `FordPass.js` as a new script (paste its contents, or import from URL via Scriptable's "+"
-   menu).
+   menu), and rename it from "Untitled Script" to `FordPass` — Scriptable has no way to set this
+   automatically when pasting.
 3. Run the script once — don't add it as a widget yet. It'll ask for your region (leave as `usa`
    unless you're outside North America), then open a sign-in window. Sign in with your real Ford
    account. Once signed in, it fetches your account's vehicles and lets you pick which to add —
