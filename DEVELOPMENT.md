@@ -329,3 +329,8 @@ numbers a third time, dropped the floors much further than the arithmetic says s
 necessary (0.4 for labels, 0.35 for values) specifically to survive being wrong about character
 widths yet again -- worst case this renders some words quite small, which is still strictly
 better than wrapping (and the misaligned row heights that come with it).
+
+Confirmed via a follow-up screenshot round: all of "BRAKE TORQUE"/"TRIP ECONOMY" (cols2),
+"REMOTE START"/"PANIC ALARM"/"PARK BRAKE"/"BRAKE TORQUE" (cols4, medium), and
+"ACCEL PEDAL"/"BRAKE PEDAL"/"TRANS TORQUE"/"WHEEL TORQUE"/"TRIP ECONOMY" (cols4, large) now fit
+on one line. No regressions in the doors/tires/windows/seatBelt verbose grids.
