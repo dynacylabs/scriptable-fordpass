@@ -9,6 +9,24 @@ account of ours, no server — it talks straight to Ford's own app API from your
 **[→ Setup &amp; widget configurator](https://dynacylabs.github.io/scriptable-fordpass/)** —
 install with copy/paste buttons and build your widget's layout visually.
 
+## Screenshots
+
+<table>
+<tr>
+<td width="33%"><img src="screenshots/small-doors-fuel.png" alt="Small widget: doors + fuel" /><br><sub>Small — <code>doors,fuel</code></sub></td>
+<td width="33%"><img src="screenshots/medium-image-dashboard.png" alt="Medium widget with vehicle photo" /><br><sub>Medium — <code>image,doors,fuel,range</code></sub></td>
+<td width="33%"><img src="screenshots/medium-commands.png" alt="Medium widget with lock/unlock/start buttons" /><br><sub>Medium — <code>doors,fuel,commands</code></sub></td>
+</tr>
+<tr>
+<td width="33%"><img src="screenshots/medium-dashboard.png" alt="Medium widget, six-tile dashboard" /><br><sub>Medium — <code>doors,fuel,range,odometer,oil,battery12v</code></sub></td>
+<td width="33%"><img src="screenshots/medium-health-seatbelt.png" alt="Medium widget showing health and seat belt status" /><br><sub>Medium — <code>healthVerbose,seatBeltVerbose</code></sub></td>
+<td width="33%"><img src="screenshots/large-dashboard.png" alt="Large widget, full dashboard with commands" /><br><sub>Large — full dashboard + commands</sub></td>
+</tr>
+</table>
+
+<img src="screenshots/large-verbose.png" alt="Large widget showing per-door, per-wheel, and per-window detail" width="33%" /><br>
+<sub>Large — <code>doorsVerbose,tiresVerbose,windowsVerbose</code></sub>
+
 ## What it does
 
 Talks to the same private FordPass/Lincoln Way mobile-app API the official app uses

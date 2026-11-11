@@ -56,6 +56,8 @@
   .badge.sponsor { color: #ff8ab0; border-color: #5a2b3d; }
   .badge:hover { border-color: var(--accent); color: var(--text); }
   .cta-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+  .gallery { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 36px; }
+  .gallery img { max-width: 260px; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border); }
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 11px 20px; border-radius: var(--radius); font-size: 15px; font-weight: 600;
@@ -172,6 +174,11 @@
     <div class="cta-row">
       <a class="btn btn-primary" href="#install">Get started</a>
       <a class="btn btn-secondary" href="#configure">Build widget config</a>
+    </div>
+    <div class="gallery">
+      <img src="assets/screenshots/medium-image-dashboard.png" alt="Medium widget with vehicle photo, doors, fuel, and range" loading="lazy" />
+      <img src="assets/screenshots/medium-commands.png" alt="Medium widget with lock, unlock, start, stop, and refresh buttons" loading="lazy" />
+      <img src="assets/screenshots/large-dashboard.png" alt="Large widget showing a full vehicle dashboard" loading="lazy" />
     </div>
   </section>
 
