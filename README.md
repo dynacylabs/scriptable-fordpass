@@ -165,6 +165,8 @@ Not promises, just the direction this is headed:
 
 - **Lock Screen widgets** — support for the circular/rectangular/inline Lock Screen widget
   families, not just Home Screen widgets.
+- **Further UI polish** — layout still gets wonky in certain tile/column/content combinations.
+  Ongoing work to track down and fix the remaining cases.
 
 ## License &amp; support
 
